@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyTAAA Trading Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2d3748;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .subtitle {
+            color: #718096;
+            font-size: 14px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-label {
+            color: #718096;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        
+        .stat-value {
+            color: #2d3748;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .stat-change {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .stat-change.positive { color: #48bb78; }
+        .stat-change.negative { color: #f56565; }
+        
+        .models-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .model-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .model-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .model-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .model-index {
+            font-size: 12px;
+            color: #718096;
+            background: #edf2f7;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .model-meta {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .model-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .model-stat-item {
+            text-align: center;
+            padding: 10px;
+            background: #f7fafc;
+            border-radius: 6px;
+        }
+        
+        .model-stat-label {
+            font-size: 11px;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+        
+        .model-stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .model-chart {
+            background: #f7fafc;
+            height: 150px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .chart-line {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            height: 130px;
+            background: linear-gradient(to right, #48bb78 0%, #38a169 100%);
+            clip-path: polygon(
+                0% 80%, 10% 75%, 20% 65%, 30% 70%, 40% 55%, 
+                50% 45%, 60% 50%, 70% 35%, 80% 40%, 90% 25%, 100% 20%,
+                100% 100%, 0% 100%
+            );
+            opacity: 0.3;
+        }
+        
+        .chart-line-stroke {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            height: 130px;
+            border-bottom: 3px solid #48bb78;
+            clip-path: polygon(
+                0% 80%, 10% 75%, 20% 65%, 30% 70%, 40% 55%, 
+                50% 45%, 60% 50%, 70% 35%, 80% 40%, 90% 25%, 100% 20%
+            );
+        }
+        
+        .holdings-list {
+            font-size: 13px;
+        }
+        
+        .holding-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .holding-item:last-child {
+            border-bottom: none;
+        }
+        
+        .holding-ticker {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .holding-weight {
+            color: #718096;
+        }
+        
+        .holding-return {
+            font-weight: 600;
+        }
+        
+        .view-details {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background: #edf2f7;
+            border: none;
+            border-radius: 6px;
+            color: #4a5568;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .view-details:hover {
+            background: #e2e8f0;
+        }
+        
+        .meta-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .active-model-indicator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .active-model-label {
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        
+        .active-model-name {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .switch-history {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .switch-item {
+            padding: 12px;
+            background: #f7fafc;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .switch-date {
+            font-size: 12px;
+            color: #718096;
+        }
+        
+        .switch-model {
+            font-weight: 600;
+            color: #2d3748;
+        }
+        
+        .last-updated {
+            text-align: center;
+            color: #e2e8f0;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PyTAAA Trading Dashboard</h1>
+            <p class="subtitle">Real-time performance tracking across 6 trading models</p>
+        </header>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Portfolio Value</div>
+                <div class="stat-value">$847,293</div>
+                <div class="stat-change positive">+12.4% YTD</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Best Performer</div>
+                <div class="stat-value">NAZ100 Pine</div>
+                <div class="stat-change positive">+18.2% YTD</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Meta-Model</div>
+                <div class="stat-value">$156,892</div>
+                <div class="stat-change positive">+15.7% YTD</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Active Models</div>
+                <div class="stat-value">6 / 6</div>
+                <div class="stat-change">Last updated: 2h ago</div>
+            </div>
+        </div>
+        
+        <div class="models-grid">
+            <!-- NAZ100 Pine Model -->
+            <div class="model-card">
+                <div class="model-header">
+                    <div>
+                        <div class="model-name">NAZ100 Pine</div>
+                        <div class="model-index">Nasdaq 100 | Percentile Channels</div>
+                    </div>
+                </div>
+                <div class="model-stats">
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">Current Value</div>
+                        <div class="model-stat-value">$156,892</div>
+                    </div>
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">YTD Return</div>
+                        <div class="model-stat-value" style="color: #48bb78;">+18.2%</div>
+                    </div>
+                </div>
+                <div class="model-chart">
+                    <div class="chart-line"></div>
+                    <div class="chart-line-stroke"></div>
+                </div>
+                <div class="holdings-list">
+                    <div class="holding-item">
+                        <span class="holding-ticker">AAPL</span>
+                        <span class="holding-weight">15.2%</span>
+                        <span class="holding-return positive">+8.3%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">NVDA</span>
+                        <span class="holding-weight">14.8%</span>
+                        <span class="holding-return positive">+12.1%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">MSFT</span>
+                        <span class="holding-weight">14.5%</span>
+                        <span class="holding-return positive">+6.7%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">+4 more holdings...</span>
+                        <span class="holding-weight">55.5%</span>
+                        <span class="holding-return"></span>
+                    </div>
+                </div>
+                <button class="view-details">View Full Details →</button>
+            </div>
+            
+            <!-- NAZ100 HMA Model -->
+            <div class="model-card">
+                <div class="model-header">
+                    <div>
+                        <div class="model-name">NAZ100 HMA</div>
+                        <div class="model-index">Nasdaq 100 | Hull Moving Average</div>
+                    </div>
+                </div>
+                <div class="model-stats">
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">Current Value</div>
+                        <div class="model-stat-value">$142,567</div>
+                    </div>
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">YTD Return</div>
+                        <div class="model-stat-value" style="color: #48bb78;">+14.5%</div>
+                    </div>
+                </div>
+                <div class="model-chart">
+                    <div class="chart-line" style="clip-path: polygon(0% 85%, 10% 80%, 20% 75%, 30% 72%, 40% 65%, 50% 55%, 60% 60%, 70% 50%, 80% 45%, 90% 35%, 100% 30%, 100% 100%, 0% 100%);"></div>
+                    <div class="chart-line-stroke" style="clip-path: polygon(0% 85%, 10% 80%, 20% 75%, 30% 72%, 40% 65%, 50% 55%, 60% 60%, 70% 50%, 80% 45%, 90% 35%, 100% 30%);"></div>
+                </div>
+                <div class="holdings-list">
+                    <div class="holding-item">
+                        <span class="holding-ticker">TSLA</span>
+                        <span class="holding-weight">16.1%</span>
+                        <span class="holding-return positive">+15.2%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">META</span>
+                        <span class="holding-weight">15.3%</span>
+                        <span class="holding-return positive">+10.5%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">GOOGL</span>
+                        <span class="holding-weight">14.2%</span>
+                        <span class="holding-return positive">+7.8%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">+4 more holdings...</span>
+                        <span class="holding-weight">54.4%</span>
+                        <span class="holding-return"></span>
+                    </div>
+                </div>
+                <button class="view-details">View Full Details →</button>
+            </div>
+            
+            <!-- SP500 Pine Model -->
+            <div class="model-card">
+                <div class="model-header">
+                    <div>
+                        <div class="model-name">SP500 Pine</div>
+                        <div class="model-index">S&P 500 | Percentile Channels</div>
+                    </div>
+                </div>
+                <div class="model-stats">
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">Current Value</div>
+                        <div class="model-stat-value">$138,421</div>
+                    </div>
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">YTD Return</div>
+                        <div class="model-stat-value" style="color: #48bb78;">+11.8%</div>
+                    </div>
+                </div>
+                <div class="model-chart">
+                    <div class="chart-line" style="clip-path: polygon(0% 90%, 10% 88%, 20% 82%, 30% 78%, 40% 70%, 50% 65%, 60% 62%, 70% 55%, 80% 50%, 90% 42%, 100% 38%, 100% 100%, 0% 100%);"></div>
+                    <div class="chart-line-stroke" style="clip-path: polygon(0% 90%, 10% 88%, 20% 82%, 30% 78%, 40% 70%, 50% 65%, 60% 62%, 70% 55%, 80% 50%, 90% 42%, 100% 38%);"></div>
+                </div>
+                <div class="holdings-list">
+                    <div class="holding-item">
+                        <span class="holding-ticker">JPM</span>
+                        <span class="holding-weight">15.7%</span>
+                        <span class="holding-return positive">+9.2%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">XOM</span>
+                        <span class="holding-weight">14.9%</span>
+                        <span class="holding-return positive">+11.3%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">UNH</span>
+                        <span class="holding-weight">14.1%</span>
+                        <span class="holding-return positive">+8.5%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">+4 more holdings...</span>
+                        <span class="holding-weight">55.3%</span>
+                        <span class="holding-return"></span>
+                    </div>
+                </div>
+                <button class="view-details">View Full Details →</button>
+            </div>
+            
+            <!-- Meta Model (Abacus) -->
+            <div class="model-card" style="border: 3px solid #667eea;">
+                <div class="model-header">
+                    <div>
+                        <div class="model-name">Abacus (Meta-Model)</div>
+                        <span class="model-meta">Model Switching</span>
+                    </div>
+                </div>
+                <div class="model-stats">
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">Current Value</div>
+                        <div class="model-stat-value">$167,234</div>
+                    </div>
+                    <div class="model-stat-item">
+                        <div class="model-stat-label">YTD Return</div>
+                        <div class="model-stat-value" style="color: #48bb78;">+15.7%</div>
+                    </div>
+                </div>
+                <div class="active-model-indicator">
+                    <div class="active-model-label">Currently Following:</div>
+                    <div class="active-model-name">NAZ100 Pine</div>
+                </div>
+                <div class="model-chart">
+                    <div class="chart-line" style="background: linear-gradient(to right, #667eea 0%, #764ba2 100%); clip-path: polygon(0% 82%, 10% 78%, 20% 70%, 30% 68%, 40% 60%, 50% 50%, 60% 55%, 70% 42%, 80% 38%, 90% 28%, 100% 22%, 100% 100%, 0% 100%);"></div>
+                    <div class="chart-line-stroke" style="border-bottom-color: #667eea; clip-path: polygon(0% 82%, 10% 78%, 20% 70%, 30% 68%, 40% 60%, 50% 50%, 60% 55%, 70% 42%, 80% 38%, 90% 28%, 100% 22%);"></div>
+                </div>
+                <div class="holdings-list">
+                    <div class="holding-item">
+                        <span class="holding-ticker">AAPL</span>
+                        <span class="holding-weight">15.2%</span>
+                        <span class="holding-return positive">+8.3%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">NVDA</span>
+                        <span class="holding-weight">14.8%</span>
+                        <span class="holding-return positive">+12.1%</span>
+                    </div>
+                    <div class="holding-item">
+                        <span class="holding-ticker">+5 more holdings...</span>
+                        <span class="holding-weight">70.0%</span>
+                        <span class="holding-return"></span>
+                    </div>
+                </div>
+                <button class="view-details">View Switching History →</button>
+            </div>
+        </div>
+        
+        <div class="meta-section">
+            <div class="section-title">Meta-Model Switching History</div>
+            <div class="switch-history">
+                <div class="switch-item">
+                    <div>
+                        <div class="switch-date">January 2026</div>
+                        <div class="switch-model">Switched to: NAZ100 Pine</div>
+                    </div>
+                    <div style="color: #48bb78; font-weight: 600;">+18.2%</div>
+                </div>
+                <div class="switch-item">
+                    <div>
+                        <div class="switch-date">December 2025</div>
+                        <div class="switch-model">Stayed with: NAZ100 Pine</div>
+                    </div>
+                    <div style="color: #48bb78; font-weight: 600;">+15.8%</div>
+                </div>
+                <div class="switch-item">
+                    <div>
+                        <div class="switch-date">November 2025</div>
+                        <div class="switch-model">Switched to: NAZ100 Pine</div>
+                    </div>
+                    <div style="color: #48bb78; font-weight: 600;">+12.3%</div>
+                </div>
+                <div class="switch-item">
+                    <div>
+                        <div class="switch-date">October 2025</div>
+                        <div class="switch-model">Switched to: SP500 HMA</div>
+                    </div>
+                    <div style="color: #48bb78; font-weight: 600;">+9.1%</div>
+                </div>
+                <div class="switch-item">
+                    <div>
+                        <div class="switch-date">September 2025</div>
+                        <div class="switch-model">Switched to: NAZ100 HMA</div>
+                    </div>
+                    <div style="color: #48bb78; font-weight: 600;">+7.5%</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="last-updated">
+            Last updated: January 15, 2026 at 4:00 PM ET | Data from PyTAAA.master
+        </div>
+    </div>
+</body>
+</html>
