@@ -366,3 +366,144 @@ async def test_get_model_holdings_no_snapshots(db_session, override_get_db):
     
     assert response.status_code == 404
     assert "no portfolio snapshots" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_compare_models_empty(override_get_db):
+    """Test GET /models/compare with empty database."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/models/compare?days=30")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["days"] == 30
+    assert len(data["models"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_compare_models_with_data(db_session, override_get_db):
+    """Test GET /models/compare returns all models with performance data."""
+    # Create multiple models
+    model1 = TradingModel(
+        id=uuid4(),
+        name="model_1",
+        description="First model",
+        index_type=IndexType.NASDAQ_100,
+        is_meta=False
+    )
+    model2 = TradingModel(
+        id=uuid4(),
+        name="model_2",
+        description="Second model",
+        index_type=IndexType.SP_500,
+        is_meta=False
+    )
+    meta = TradingModel(
+        id=uuid4(),
+        name="meta_model",
+        description="Meta model",
+        index_type=IndexType.SP_500,
+        is_meta=True
+    )
+    
+    db_session.add_all([model1, model2, meta])
+    
+    # Add performance metrics for each model
+    base_date = date.today() - timedelta(days=10)
+    for i in range(5):
+        metric_date = base_date + timedelta(days=i * 2)
+        
+        db_session.add(PerformanceMetric(
+            id=uuid4(),
+            model_id=model1.id,
+            date=metric_date,
+            base_value=10000.0 + (i * 100),
+            signal=1,
+            traded_value=10000.0 + (i * 100)
+        ))
+        
+        db_session.add(PerformanceMetric(
+            id=uuid4(),
+            model_id=model2.id,
+            date=metric_date,
+            base_value=11000.0 + (i * 150),
+            signal=1,
+            traded_value=11000.0 + (i * 150)
+        ))
+        
+        db_session.add(PerformanceMetric(
+            id=uuid4(),
+            model_id=meta.id,
+            date=metric_date,
+            base_value=12000.0 + (i * 200),
+            signal=1,
+            traded_value=12000.0 + (i * 200)
+        ))
+    
+    await db_session.commit()
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/models/compare?days=30")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify structure
+    assert data["days"] == 30
+    assert len(data["models"]) == 3
+    
+    # Meta-model should be first (sorted by is_meta DESC)
+    assert data["models"][0]["model_name"] == "meta_model"
+    assert data["models"][0]["is_meta"] is True
+    assert len(data["models"][0]["data_points"]) == 5
+    
+    # Verify data points
+    for model_data in data["models"]:
+        assert "model_id" in model_data
+        assert "model_name" in model_data
+        assert "is_meta" in model_data
+        assert "data_points" in model_data
+        
+        for dp in model_data["data_points"]:
+            assert "date" in dp
+            assert "base_value" in dp
+            assert "traded_value" in dp
+            assert "signal" in dp
+
+
+@pytest.mark.asyncio
+async def test_compare_models_custom_days(db_session, override_get_db):
+    """Test GET /models/compare with custom days parameter."""
+    model = TradingModel(
+        id=uuid4(),
+        name="test_model",
+        description="Test model",
+        index_type=IndexType.NASDAQ_100,
+        is_meta=False
+    )
+    db_session.add(model)
+    
+    # Add 100 days of metrics
+    base_date = date.today() - timedelta(days=100)
+    for i in range(100):
+        db_session.add(PerformanceMetric(
+            id=uuid4(),
+            model_id=model.id,
+            date=base_date + timedelta(days=i),
+            base_value=10000.0 + (i * 10),
+            signal=1,
+            traded_value=10000.0 + (i * 10)
+        ))
+    
+    await db_session.commit()
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/models/compare?days=50")
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    assert data["days"] == 50
+    assert len(data["models"]) == 1
+    # Should return only the last 50 days
+    assert len(data["models"][0]["data_points"]) == 50

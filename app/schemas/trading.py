@@ -101,3 +101,17 @@ class HoldingsResponse(BaseModel):
     holdings: List[HoldingDetail]
     active_sub_model_name: Optional[str] = None
     model_config = ConfigDict(protected_namespaces=())
+
+class ModelPerformanceSeries(BaseModel):
+    """Performance time series for a single model"""
+    model_id: UUID
+    model_name: str
+    is_meta: bool
+    index_type: IndexType
+    data_points: List[PerformanceDataPoint]
+
+class ComparisonResponse(BaseModel):
+    """Performance comparison of all models"""
+    days: int
+    models: List[ModelPerformanceSeries]
+    model_config = ConfigDict(protected_namespaces=())
