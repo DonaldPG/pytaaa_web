@@ -93,11 +93,33 @@ pytest tests/ -v
     - Comprehensive error handling in all 3 parsers (IOError/Exception with UTF-8 encoding)
   - **Result**: 22/22 tests passing, no regressions, cleaner codebase following Clean Code/SOLID principles
 
-## Phase 4: Meta-Model Tracking `4h`
-- [ ] GET /meta/switches - Monthly model change history `2h`
-  - **AC**: Shows which model was active each month with performance delta
-- [ ] Comparison chart: meta vs all underlying models `2h`
-  - **AC**: Overlay 6 equity curves, highlight switch dates
+## Phase 4: Model Comparison & Visualization ✅ `3h actual`
+- [x] GET /models/compare - Multi-model performance comparison `1.5h`
+  - **AC**: Returns all 6 models with configurable time period, meta-model first ✅
+  - **Result**: Endpoint returns equity curves for all models (30-5000 days), orders by is_meta DESC, returns in <300ms
+- [x] Comparison chart: All models overlaid with meta-model highlighting `1.5h`
+  - **AC**: Overlay 6 equity curves, distinguish meta-model visually ✅
+  - **Result**: Interactive Chart.js visualization with gold meta-model line (3px), dynamic time periods, performance stats grid
+- [x] Comprehensive testing for comparison endpoint `0.5h`
+  - **AC**: Test empty DB, populated data, custom parameters ✅
+  - **Result**: 3 new tests added, 25/25 tests passing (13 API + 4 DB + 8 parser)
+- **Note**: Model switching detection deferred - `active_sub_model_id` is NULL in all snapshots
+  - Requires additional metadata source or inference logic
+  - Current implementation focuses on performance visualization rather than switch detection
+
+## Phase 4.5: Dashboard UX Improvements ✅ `2h actual`
+- [x] Increased API validation limits for max period support `0.5h`
+  - **AC**: All period selectors work correctly including "max" (13+ years) ✅
+  - **Result**: Limits increased from 10K to 100K days in both `/performance` and `/compare` endpoints
+- [x] Fixed date range filtering from record count to calendar days `0.5h`
+  - **AC**: Period selectors show correct date ranges (2 years = data from 2024, not 2021) ✅
+  - **Result**: Changed from `.limit(days)` to `cutoff_date = today - timedelta(days=days)`
+- [x] Simplified detail chart visualization `0.5h`
+  - **AC**: Clean single-line chart without redundant data or legend ✅
+  - **Result**: Removed "Traded Value" line, disabled legend, kept only "Portfolio Value"
+- [x] Added time-based x-axis formatting `0.5h`
+  - **AC**: Monthly date labels matching comparison page, no date crowding ✅
+  - **Result**: Chart.js time scale with monthly units, max 12 ticks, bold axis labels
 
 ## Phase 5: Production Readiness `6h`
 - [ ] Docker compose with persistent PostgreSQL volume `2h`

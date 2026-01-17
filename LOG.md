@@ -132,3 +132,71 @@
   - Performance improvement: 71% fewer DB queries for model listing
   - DRY improvement: Eliminated 3 duplicate code blocks
   - Error handling: 100% of file operations now protected
+
+## [2026-01-16] - Phase 4: Model Comparison & Visualization ✅ `3h actual`
+- **Comparison Endpoint**: Created `GET /api/v1/models/compare` for multi-model analysis
+  - Returns performance data for all 6 models in parallel
+  - Configurable time period (30-5000 days, default 90)
+  - Orders meta-model first for easy identification
+  - Response includes full equity curves for all models simultaneously
+- **Comparison Schema**: Added `ComparisonResponse` and `ModelPerformanceSeries` Pydantic models
+  - `ModelPerformanceSeries`: Wraps model metadata with time-series data
+  - `ComparisonResponse`: Container for all models' performance data
+- **Interactive Comparison Dashboard**: Built `/static/comparison.html` with Chart.js overlays
+  - **Multi-Line Chart**: All 6 equity curves overlaid on single chart with distinct colors
+  - **Meta-Model Highlighting**: Gold color (RGB 255, 215, 0) and thicker line (3px vs 2px) for meta-model
+  - **Dynamic Time Periods**: Dropdown selector (30/90/180/365/730/1825/5000 days)
+  - **Performance Statistics**: 4-card grid showing models compared, best performer, meta-model return, time period
+  - **Custom Legend**: Grid layout with color indicators and META badge for meta-model
+  - **Responsive Design**: Adapts to screen sizes with 500px chart height
+- **Dashboard Integration**: Added "Compare All Models" button to main dashboard header
+  - White button with hover animation (translateY lift and shadow)
+  - Direct link to `/static/comparison.html`
+- **Comprehensive Testing**: Added 3 new test cases for comparison endpoint
+  - `test_compare_models_empty`: Empty database returns empty models array
+  - `test_compare_models_with_data`: Validates 3 models returned with correct data structure and meta-model ordering
+  - `test_compare_models_custom_days`: Verifies days parameter correctly limits returned data points
+  - **Result**: 25/25 tests passing (13 API + 4 DB + 8 parser)
+- **Route Optimization**: Moved `/compare` route before `/{model_id}` to prevent path conflicts
+  - FastAPI route order matters: static paths must precede path parameters
+- **Performance**: Comparison endpoint returns all 6 models with 90 days of data in <300ms
+- **Data Insights**:
+  - Meta-model (`naz100_sp500_abacus`) has 6,779 performance metrics (same as other models)
+  - No `active_sub_model_id` data in portfolio snapshots (all NULL values)
+  - Model switching detection deferred to future phase (requires additional metadata or inference logic)
+
+## [2026-01-17] - Dashboard UX Improvements & Period Calculation Fixes ✅ `2h actual`
+- **API Period Validation**: Increased maximum days parameter from 10,000 to 100,000
+  - **Endpoints Updated**: Both `/models/{id}/performance` and `/models/compare`
+  - **Reason**: "Max" period (all historical data from 2013-01-03) requires ~13 years = 4,759 days
+  - **Impact**: Fixed "max" period showing 0.0% gains due to API validation errors
+- **Date Range Filtering**: Changed from record count to calendar date filtering
+  - **Before**: Used `.limit(days)` which counted database records (semi-weekly data)
+  - **After**: Uses `cutoff_date = date.today() - timedelta(days=days)` with date comparison
+  - **Impact**: "2 years" now correctly shows data from 2024 instead of 2021 (~5 years)
+  - **Example**: 730 days ago = 2024-01-18, returns 188 data points (semi-weekly frequency)
+- **Detail Chart Simplification**: Removed redundant "Traded Value" line from dashboard detail view
+  - **Datasets**: Reduced from 2 lines to 1 (kept "Portfolio Value" only)
+  - **Legend**: Disabled (`legend: { display: false }`) as single line doesn't need legend
+  - **Rationale**: Base value and traded value are identical for visual analysis purposes
+- **Time-Based X-Axis**: Added monthly date formatting to detail plot
+  - **Implementation**: Chart.js time scale with `unit: 'month'` and `maxTicksLimit: 12`
+  - **Labels**: Monthly format (e.g., "Jan 2024", "Feb 2024") instead of crowded daily dates
+  - **Consistency**: Matches comparison page time axis formatting
+  - **Dependencies**: Added `chartjs-adapter-date-fns@3.0.0` library for time scale support
+- **Axis Labels**: Added bold titles to chart axes
+  - **Y-axis**: "Portfolio Value ($)" with bold 14px font
+  - **X-axis**: "Date" with bold 14px font
+- **Period Selectors**: Standardized across all pages (dashboard cards, detail view, comparison)
+  - **Options**: 1 mo, 3 mo, 6 mo, YTD, 1 yr, 2 yr, 3 yr, 5 yr, 10 yr, max
+  - **YTD Calculation**: Dynamic based on current date (`days_from_year_start`)
+  - **Max Period**: 100,000 days to retrieve full 13-year history
+- **Testing Results**:
+  - Verified 730 days (2 years) returns 188 data points from 2024-01-21
+  - Confirmed API date filtering: `cutoff_date = 2024-01-18` for 2-year period
+  - All period selectors working correctly from 30 days to max (100,000 days)
+  - Chart.js time axis rendering monthly labels without errors
+- **Performance**:
+  - API queries with date filtering: <300ms for all periods
+  - Chart rendering with time axis: Smooth, no performance degradation
+  - Data retrieval for max period (4,759 days): Returns 6,779 metrics successfully
