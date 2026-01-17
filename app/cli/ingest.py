@@ -92,12 +92,32 @@ async def ingest_model(
                 print("❌ Ingestion cancelled")
                 return False
             
-            # Delete existing data
+            # Delete existing data using direct queries (not lazy-loaded relationships)
             print("🗑️  Deleting existing snapshots and metrics...")
-            for snapshot in model.snapshots:
-                await session.delete(snapshot)
-            for metric in model.metrics:
-                await session.delete(metric)
+            
+            # First get snapshot IDs
+            from sqlalchemy import delete
+            snapshot_ids_result = await session.execute(
+                select(PortfolioSnapshot.id).where(PortfolioSnapshot.model_id == model.id)
+            )
+            snapshot_ids = [row[0] for row in snapshot_ids_result.fetchall()]
+            
+            # Delete holdings first (foreign key constraint)
+            if snapshot_ids:
+                await session.execute(
+                    delete(PortfolioHolding).where(PortfolioHolding.snapshot_id.in_(snapshot_ids))
+                )
+            
+            # Delete snapshots
+            await session.execute(
+                delete(PortfolioSnapshot).where(PortfolioSnapshot.model_id == model.id)
+            )
+            
+            # Delete metrics
+            await session.execute(
+                delete(PerformanceMetric).where(PerformanceMetric.model_id == model.id)
+            )
+            
             await session.commit()
         else:
             print(f"✨ Creating new model: {model_name}")
@@ -132,34 +152,83 @@ async def ingest_model(
         # Insert portfolio snapshots and holdings
         if holdings_data:
             print(f"💾 Inserting {len(holdings_data)} portfolio snapshots...")
-            for i, snapshot_dict in enumerate(holdings_data):
+            
+            # Sort snapshots by date to process chronologically
+            holdings_data_sorted = sorted(holdings_data, key=lambda x: x['date'])
+            
+            # Build a cache of model name -> model ID for meta-models
+            model_id_cache = {}
+            if model.is_meta:
+                print("   Building sub-model ID cache for meta-model...")
+                # Get all potential sub-models
+                all_models_result = await session.execute(select(TradingModel))
+                all_models = all_models_result.scalars().all()
+                for m in all_models:
+                    model_id_cache[m.name] = m.id
+                print(f"   Cached {len(model_id_cache)} model IDs")
+            
+            # Track previous holdings to determine actual purchase dates
+            previous_holdings = {}  # {(ticker, purchase_price): buy_date}
+            
+            for i, snapshot_dict in enumerate(holdings_data_sorted):
+                # Determine active sub-model ID for this specific snapshot
+                snapshot_active_sub_model_id = None
+                if model.is_meta and 'active_model' in snapshot_dict:
+                    active_model_name = snapshot_dict['active_model']
+                    snapshot_active_sub_model_id = model_id_cache.get(active_model_name)
+                    if not snapshot_active_sub_model_id:
+                        print(f"   ⚠️  Warning: Active model '{active_model_name}' not found for snapshot {snapshot_dict['date']}")
+                
                 snapshot = PortfolioSnapshot(
                     model_id=model.id,
                     date=snapshot_dict['date'],
                     total_value=snapshot_dict['total_value'],
+                    active_sub_model_id=snapshot_active_sub_model_id,
                 )
                 session.add(snapshot)
                 await session.flush()  # Get snapshot.id
                 
-                # Add holdings
+                current_holdings_set = {}  # For tracking this month's holdings
+                
+                # Add holdings with corrected buy_date
                 for holding_dict in snapshot_dict['holdings']:
+                    ticker = holding_dict['ticker']
+                    purchase_price = holding_dict['purchase_price']
+                    shares = holding_dict['shares']
+                    
+                    # Check if this holding existed in previous month with same purchase price
+                    holding_key = (ticker, purchase_price)
+                    
+                    if holding_key in previous_holdings:
+                        # This holding existed before - use the original buy_date
+                        buy_date = previous_holdings[holding_key]
+                    else:
+                        # New holding - use current snapshot date as buy_date
+                        buy_date = snapshot_dict['date']
+                    
                     holding = PortfolioHolding(
                         snapshot_id=snapshot.id,
-                        ticker=holding_dict['ticker'],
-                        shares=holding_dict['shares'],
-                        purchase_price=holding_dict['purchase_price'],
-                        current_price=holding_dict['current_price'],
+                        ticker=ticker,
+                        shares=shares,
+                        purchase_price=purchase_price,
+                        current_price=holding_dict.get('current_price', purchase_price),
                         weight=holding_dict['weight'],
-                        rank=holding_dict['rank'],
-                        buy_date=holding_dict['buy_date'],
+                        rank=holding_dict.get('rank'),
+                        buy_date=buy_date,
                     )
                     session.add(holding)
+                    
+                    # Track for next iteration
+                    current_holdings_set[holding_key] = buy_date
                 
-                if (i + 1) % 100 == 0:
-                    print(f"   Progress: {i + 1}/{len(holdings_data)}")
+                # Update previous_holdings for next iteration
+                previous_holdings = current_holdings_set
+                
+                if (i + 1) % 50 == 0:
+                    print(f"   Progress: {i + 1}/{len(holdings_data_sorted)}")
             
             await session.commit()
-            print(f"✅ Inserted {len(holdings_data)} snapshots")
+            print(f"✅ Inserted {len(holdings_data)} snapshots with corrected purchase dates")
         
         print(f"✅ Successfully ingested model: {model_name}")
         return True

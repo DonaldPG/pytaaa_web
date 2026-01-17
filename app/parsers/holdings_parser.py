@@ -25,8 +25,8 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
         
     Returns:
         Tuple of (snapshots_list, active_model_name)
-        - snapshots_list: List of dicts with keys: date, total_value, holdings
-        - active_model_name: Always None (no model detection in this format)
+        - snapshots_list: List of dicts with keys: date, total_value, holdings, active_model
+        - active_model_name: The last active_model found (for backward compatibility)
         
     Raises:
         HoldingsParseError: If file format is invalid
@@ -39,6 +39,8 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
     current_stocks = []
     current_shares = []
     current_prices = []
+    current_active_model = None  # Track active model for current snapshot
+    last_active_model = None  # Track most recent active model seen
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -49,12 +51,21 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
                 if not line or line.startswith('['):
                     continue
                 
+                # Parse trading_model (appears before TradeDate)
+                if line.startswith('trading_model:'):
+                    model_name = line.split(':', 1)[1].strip()
+                    current_active_model = model_name
+                    last_active_model = model_name
+                    continue
+                
                 # Parse TradeDate
                 if line.startswith('TradeDate:'):
                     # Save previous snapshot if exists
                     if current_date and current_stocks:
                         snapshot = _create_snapshot(current_date, current_stocks, current_shares, current_prices)
                         if snapshot:
+                            # Add active model to snapshot (default to naz100_hma if not specified)
+                            snapshot['active_model'] = current_active_model if current_active_model else 'naz100_hma'
                             snapshots.append(snapshot)
                     
                     # Parse new date
@@ -72,6 +83,7 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
                     current_stocks = []
                     current_shares = []
                     current_prices = []
+                    current_active_model = None  # Reset for next snapshot
                     
                 elif line.startswith('cumulativecashin:'):
                     # Skip this line
@@ -96,6 +108,8 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
         if current_date and current_stocks:
             snapshot = _create_snapshot(current_date, current_stocks, current_shares, current_prices)
             if snapshot:
+                # Add active model to last snapshot (default to naz100_hma if not specified)
+                snapshot['active_model'] = current_active_model if current_active_model else 'naz100_hma'
                 snapshots.append(snapshot)
     
     except IOError as e:
@@ -103,7 +117,7 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
     except Exception as e:
         raise HoldingsParseError(f"Unexpected error parsing {file_path}: {e}")
     
-    return snapshots, None
+    return snapshots, last_active_model
 
 
 def _create_snapshot(date, stocks, shares, prices):
