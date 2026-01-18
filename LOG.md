@@ -200,3 +200,19 @@
   - API queries with date filtering: <300ms for all periods
   - Chart rendering with time axis: Smooth, no performance degradation
   - Data retrieval for max period (4,759 days): Returns 6,779 metrics successfully
+
+## [2026-01-17] - UI Polish & Layout Refinements ✅ `0.5h actual`
+- **Card Ordering**: Swapped naz100_pi and naz100_pine positions for vertical alignment
+  - **Before**: Models sorted alphabetically (hma, pi, pine)
+  - **After**: Models sorted to align _pine and _hma cards vertically (hma, pine, pi)
+  - **Impact**: Grid layout now visually groups models by strategy across both indexes
+  - **Implementation**: Custom sort function in `/models/` endpoint
+- **Page Zoom**: Reduced overall UI scale to 85% on both dashboard and comparison pages
+  - **Applied to**: `dashboard.html` and `comparison.html` body elements
+  - **Method**: CSS `zoom: 0.85;` property for proportional scaling
+  - **Impact**: More content visible on screen, maintains all proportions and functionality
+- **Detail View Layout**: Consolidated header from 3 rows to single row
+  - **Left**: Back button + Model name
+  - **Right**: Time Period selector
+  - **Removed**: Unnecessary vertical spacing and separate header rows
+  - **Impact**: More compact layout, more screen space for chart and holdings table

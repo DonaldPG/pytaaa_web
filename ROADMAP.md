@@ -121,6 +121,17 @@ pytest tests/ -v
   - **AC**: Monthly date labels matching comparison page, no date crowding ✅
   - **Result**: Chart.js time scale with monthly units, max 12 ticks, bold axis labels
 
+## Phase 4.6: UI Polish & Layout ✅ `0.5h actual`
+- [x] Card ordering optimization for visual alignment `0.2h`
+  - **AC**: Model cards align vertically by strategy type ✅
+  - **Result**: Swapped naz100_pi and naz100_pine positions, _pine and _hma cards now vertically aligned
+- [x] Page zoom reduction for better content density `0.1h`
+  - **AC**: More content visible without scrolling ✅
+  - **Result**: Applied 85% zoom to both dashboard and comparison pages
+- [x] Detail view header consolidation `0.2h`
+  - **AC**: Single-row header with all controls accessible ✅
+  - **Result**: Back button + Model name + Period selector on one row, more space for chart/table
+
 ## Phase 5: Production Readiness `6h`
 - [ ] Docker compose with persistent PostgreSQL volume `2h`
   - **AC**: Survives container restarts, data persists
