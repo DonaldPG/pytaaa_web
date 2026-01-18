@@ -60,11 +60,30 @@ async def list_models(db: AsyncSession = Depends(get_db)):
             (PerformanceMetric.model_id == TradingModel.id) &
             (PerformanceMetric.date == latest_metric_subquery.c.max_date)
         )
-        .order_by(TradingModel.is_meta.desc(), TradingModel.name)
     )
     
-    response = []
+    # Collect all results
+    all_results = []
     for model, metric in result:
+        all_results.append((model, metric))
+    
+    # Custom sort: meta-model first, then swap naz100_pi and naz100_pine for vertical alignment
+    def sort_key(item):
+        model, _ = item
+        if model.is_meta:
+            return (0, model.name)
+        # Swap naz100_pi and naz100_pine so _pine cards align vertically
+        name = model.name
+        if name == 'naz100_pi':
+            name = 'naz100_pine_sort'
+        elif name == 'naz100_pine':
+            name = 'naz100_pi_sort'
+        return (1, name)
+    
+    all_results.sort(key=sort_key)
+    
+    response = []
+    for model, metric in all_results:
         response.append(ModelWithLatestValue(
             id=model.id,
             name=model.name,
