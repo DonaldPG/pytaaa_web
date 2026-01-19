@@ -18,6 +18,7 @@ Reads from `PyTAAA.master` output files (does NOT run trading logic):
 - **PyTAAA_status.params**: Daily portfolio values
 - **PyTAAA_holdings.params**: Current stock positions
 - **PyTAAA_ranks.params**: Stock rankings
+- **pyTAAAweb_backtestPortfolioValue.params**: Historical backtest data (optional, for visualization)
 - **pytaaa_*.json**: Model configurations
 
 **Example Status Line**:
@@ -25,6 +26,12 @@ Reads from `PyTAAA.master` output files (does NOT run trading logic):
 cumu_value: 2025-01-15 16:00:00.000000 125432.15 1 126891.34
 ```
 Means: On 2025-01-15, base value $125,432, signal=Long, traded value $126,891
+
+**Example Backtest Line**:
+```
+1991-01-02 10000.0 10000.0 0.0 0.0
+```
+Means: Date, buy-and-hold value, traded value, new highs count, new lows count
 
 ## Quick Start
 
@@ -42,20 +49,32 @@ docker-compose up -d db
 source .venv/bin/activate
 alembic upgrade head
 
-# 3. Import historical data (one-time, ~30 seconds)
-python -m app.cli.ingest --all-models
+# 3. Import historical data (one-time, ~2 minutes total)
+# Import each model's performance/holdings data
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/naz100_pine --model naz100_pine
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/naz100_hma --model naz100_hma
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/naz100_pi --model naz100_pi
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/sp500_hma --model sp500_hma --index SP_500
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/sp500_pine --model sp500_pine --index SP_500
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/naz100_sp500_abacus --model naz100_sp500_abacus --meta
 
-# 4. Start API server
+# 4. Import backtest data (optional, for backtesting visualization)
+python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/naz100_hma --model naz100_hma
+python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/naz100_pine --model naz100_pine
+python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/sp500_pine --model sp500_pine
+
+# 5. Start API server
 uvicorn app.main:app --reload
 ```
 
 API available at: http://localhost:8000  
+Dashboard: http://localhost:8000/static/dashboard.html  
 Docs: http://localhost:8000/docs
 
 ### Daily Updates
 ```bash
 # Run after market close to sync latest data
-python -m app.cli.ingest --model naz100_pine --since yesterday
+python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/naz100_pine --model naz100_pine
 ```
 
 **Performance Expectations**:
