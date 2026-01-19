@@ -767,7 +767,8 @@ Implementation Approaches**ate_model_switching_portfolio()` `1.5h`
 - Phase 5A (Portfolio Chart): 8h
 - Phase 5B (Breadth Indicators + Period Selector): 3h
 - Phase 5C (Model Selection Timeline): 4h
-- **Total completed: 35 hours**
+- Phase 5C.5 (Chart Color Refinements & UX Polish): 0.5h
+- **Total completed: 35.5 hours**
 
 ---
 
