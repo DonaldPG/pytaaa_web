@@ -271,3 +271,59 @@
   - Created: `app/parsers/backtest_parser.py`, `app/static/backtest.html`
   - Created: `migrations/versions/d8c4f8911cbb_add_backtest_data_table.py`
   - Updated: `ROADMAP.md` (marked Phase 5A complete)
+## [2026-01-18] - Phase 5B: Market Breadth Indicators Complete ✅ `3h actual`
+- **Market Breadth Charts** `1.5h`
+  - Added NASDAQ 100 breadth chart: Green lines (new highs) + red lines (new lows)
+  - Added S&P 500 breadth chart: Green lines (new highs) + red lines (new lows)
+  - Data sources: naz100_pine and sp500_pine backtest data
+  - Model selection logic: Iterates through available models to find first with data
+  - Fixed bug: sp500_hma had 0 data points, now correctly uses sp500_pine (6,560 points)
+- **Shared X-Axis Synchronization** `0.5h`
+  - All 3 charts synchronized with same date range
+  - `sharedXAxisConfig` calculated from portfolio data, applied to all charts
+  - Charts update simultaneously when model changed
+- **Visual Refinements & Grid Alignment** `0.75h`
+  - Chart heights: Portfolio 500px, Breadth 125px each
+  - Titles: 0.9rem font size, font-weight 600 (reduced from 1.5rem)
+  - Spacing: padding 15px (from 30px), margin 10px (from 20px)
+  - **Perfect grid alignment** using afterFit callbacks:
+    - Y-axis width: Fixed 80px (accommodates "$100 M" labels)
+    - X-axis height: Fixed 50px (reserves space even when labels hidden)
+  - Left and right edges of all plot grids now perfectly aligned
+- **Major/Minor Tick Implementation** `0.25h`
+  - Major ticks: Every 5 years with year labels (darker grid lines, 15% opacity)
+  - Minor ticks: Every 1 year without labels (lighter grid lines, 5% opacity)
+  - Custom callback: `year % 5 === 0` determines which ticks get labels
+  - Grid color function: Checks tick year to determine major vs minor styling
+  - X-axis labels on all 3 charts, "Date" title only on bottom chart
+- **Time Period Selector** `0.5h`
+  - Added dropdown next to "Select Model" with 10 period options:
+    - 1 month, 3 months, 6 months, YTD, 1 year, 2 years, 3 years, 5 years, 10 years, max
+  - Default: "max" (all available data)
+  - Event listener: Reloads all 3 charts when period changed
+  - YTD calculation: `getDaysFromYTD()` helper function computes days from Jan 1st
+  - API integration: Passes `?days=X` parameter to backend
+- **Backend API Update** `0.25h`
+  - Modified `/models/{model_id}/backtest` endpoint to accept `days` parameter
+  - Date filtering: `cutoff_date = today - timedelta(days=days)`
+  - SQL filter: `.where(BacktestData.date >= cutoff_date)`
+  - Validation: `days` parameter (1-100000, default 100000)
+- **Data Cleaning** `0.25h`
+  - Parser fix: Values < -99999 set to 0.0 for new_highs and new_lows
+  - Handles missing/invalid market breadth data in source files
+  - Re-ingested naz100_pine backtest data (8,826 points cleaned)
+- **Technical Implementation**:
+  - Chart.js afterFit callbacks: Force fixed axis dimensions across all charts
+  - sharedXAxisConfig object: `{min: Date, max: Date}` propagated to all chart configs
+  - Model iteration: `for (const model of models)` tries each until data found
+  - Time period API calls: Construct `days=${days}` or `days=100000` for max
+- **Performance**:
+  - Period switching: <500ms to reload all 3 charts
+  - API queries: <300ms for filtered date ranges
+  - Grid alignment: Consistent across all browser sizes
+- **Files Modified** (2 files):
+  - Modified: `app/static/backtest.html` (added period selector, breadth charts, alignment fixes)
+  - Modified: `app/api/v1/endpoints/models.py` (added days parameter filtering)
+  - Modified: `app/parsers/backtest_parser.py` (data cleaning for invalid values)
+- **Deferred to Future**:
+  - Model selection timeline (Subplot 2): No data source available, would require PyTAAA modifications

@@ -96,10 +96,10 @@
         
         .chart-container {
             background: white;
-            padding: 30px;
+            padding: 15px;
             border-radius: 10px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         
         .chart-wrapper {
@@ -111,13 +111,14 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         
         h2 {
             margin: 0;
             color: #333;
-            font-size: 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
         }
         
         .chart-controls {
@@ -169,7 +170,7 @@
 
         <div id="errorContainer"></div>
 
-        <!-- Phase 5A MVP: Subplot 1 only - Portfolio Value Comparison -->
+        <!-- Phase 5A MVP: Subplot 1 - Portfolio Value Comparison -->
         <div class="chart-container">
             <div class="chart-header">
                 <h2>Portfolio Value: Model vs Buy-and-Hold</h2>
@@ -178,10 +179,39 @@
                     <select id="modelSelect">
                         <option value="">Loading models...</option>
                     </select>
+                    <label for="periodSelect" style="margin-left: 20px;">Time Period:</label>
+                    <select id="periodSelect">
+                        <option value="30">1 month</option>
+                        <option value="90">3 months</option>
+                        <option value="180">6 months</option>
+                        <option value="ytd">YTD</option>
+                        <option value="365">1 year</option>
+                        <option value="730">2 years</option>
+                        <option value="1095">3 years</option>
+                        <option value="1825">5 years</option>
+                        <option value="3650">10 years</option>
+                        <option value="max" selected>max</option>
+                    </select>
                 </div>
             </div>
             <div class="chart-wrapper">
                 <canvas id="portfolioChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Phase 5B: Subplot 2 - NASDAQ 100 Market Breadth -->
+        <div class="chart-container">
+            <h2>NASDAQ 100 Market Breadth: New Highs vs New Lows</h2>
+            <div class="chart-wrapper" style="height: 125px; min-height: 125px;">
+                <canvas id="breadthChartNasdaq"></canvas>
+            </div>
+        </div>
+
+        <!-- Phase 5B: Subplot 3 - S&P 500 Market Breadth -->
+        <div class="chart-container">
+            <h2>S&P 500 Market Breadth: New Highs vs New Lows</h2>
+            <div class="chart-wrapper" style="height: 125px; min-height: 125px;">
+                <canvas id="breadthChartSp500"></canvas>
             </div>
         </div>
     </div>
@@ -191,6 +221,18 @@
         let models = [];
         let currentModelId = null;
         let portfolioChart = null;
+        let breadthChartNasdaq = null;
+        let breadthChartSp500 = null;
+        let sharedXAxisConfig = null;
+
+        // Helper function to calculate days from start of year to today
+        function getDaysFromYTD() {
+            const now = new Date();
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            const diffTime = Math.abs(now - startOfYear);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays;
+        }
 
         // Chart colors (matching recommendation_plot.png styling)
         const COLORS = {
@@ -230,7 +272,8 @@
                 const firstModel = models.find(m => !m.is_meta);
                 if (firstModel) {
                     modelSelect.value = firstModel.id;
-                    await loadBacktestData(firstModel.id);
+                    const period = document.getElementById('periodSelect').value;
+                    await loadBacktestData(firstModel.id, period);
                 }
             } catch (error) {
                 showError('Failed to load models: ' + error.message);
@@ -239,20 +282,49 @@
 
         // Setup event listeners
         function setupEventListeners() {
-            document.getElementById('modelSelect').addEventListener('change', async (e) => {
+            const modelSelect = document.getElementById('modelSelect');
+            const periodSelect = document.getElementById('periodSelect');
+            
+            modelSelect.addEventListener('change', async (e) => {
                 if (e.target.value) {
-                    await loadBacktestData(e.target.value);
+                    const period = periodSelect.value;
+                    await loadBacktestData(e.target.value, period);
+                }
+            });
+            
+            periodSelect.addEventListener('change', async (e) => {
+                const period = e.target.value;
+                const modelId = modelSelect.value;
+                
+                console.log('Period changed to:', period);
+                console.log('Current model ID:', modelId);
+                
+                // Reload portfolio chart if model is selected
+                if (modelId) {
+                    console.log('Reloading portfolio chart with period:', period);
+                    await loadBacktestData(modelId, period);
+                } else {
+                    console.log('No model selected, reloading breadth charts only');
+                    // Just reload breadth charts if no model selected
+                    await loadAndRenderBreadthCharts(period);
                 }
             });
         }
 
         // Load backtest data for selected model
-        async function loadBacktestData(modelId) {
+        async function loadBacktestData(modelId, days = 'max') {
             try {
                 clearError();
                 currentModelId = modelId;
                 
-                const response = await fetch(`/api/v1/models/${modelId}/backtest`);
+                // Build query parameter
+                const daysParam = days === 'max' ? 'days=100000' : (days === 'ytd' ? `days=${getDaysFromYTD()}` : `days=${days}`);
+                const url = `/api/v1/models/${modelId}/backtest?${daysParam}`;
+                
+                console.log('loadBacktestData called with days:', days);
+                console.log('Fetching URL:', url);
+                
+                const response = await fetch(url);
                 if (!response.ok) {
                     if (response.status === 404) {
                         throw new Error('No backtest data available for this model. Please ingest data first.');
@@ -261,12 +333,29 @@
                 }
                 
                 const data = await response.json();
+                
+                // Calculate shared x-axis range from this data
+                const dates = data.data_points.map(d => new Date(d.date));
+                sharedXAxisConfig = {
+                    min: new Date(Math.min(...dates)),
+                    max: new Date(Math.max(...dates))
+                };
+                
                 renderPortfolioChart(data);
+                await loadAndRenderBreadthCharts(days);
             } catch (error) {
                 showError(error.message);
                 if (portfolioChart) {
                     portfolioChart.destroy();
                     portfolioChart = null;
+                }
+                if (breadthChartNasdaq) {
+                    breadthChartNasdaq.destroy();
+                    breadthChartNasdaq = null;
+                }
+                if (breadthChartSp500) {
+                    breadthChartSp500.destroy();
+                    breadthChartSp500 = null;
                 }
             }
         }
@@ -317,6 +406,11 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            left: 0
+                        }
+                    },
                     interaction: {
                         mode: 'index',
                         intersect: false
@@ -343,8 +437,11 @@
                     scales: {
                         x: {
                             type: 'time',
+                            min: sharedXAxisConfig?.min,
+                            max: sharedXAxisConfig?.max,
                             time: {
                                 unit: 'year',
+                                stepSize: 1,  // Generate ticks every year
                                 displayFormats: {
                                     year: 'yyyy'
                                 }
@@ -352,6 +449,40 @@
                             title: {
                                 display: true,
                                 text: 'Date'
+                            },
+                            ticks: {
+                                callback: function(value, index, ticks) {
+                                    const date = new Date(value);
+                                    const year = date.getFullYear();
+                                    // Only show label for years divisible by 5
+                                    if (year % 5 === 0) {
+                                        return year;
+                                    }
+                                    return '';  // Empty label for minor ticks
+                                },
+                                major: {
+                                    enabled: true
+                                },
+                                autoSkip: false,  // Don't auto-skip to ensure all ticks are generated
+                                maxRotation: 0,
+                                minRotation: 0
+                            },
+                            grid: {
+                                display: true,
+                                color: function(context) {
+                                    if (context.tick && context.tick.value) {
+                                        const date = new Date(context.tick.value);
+                                        const year = date.getFullYear();
+                                        // Draw major grid lines (every 5 years) darker
+                                        if (year % 5 === 0) {
+                                            return 'rgba(0, 0, 0, 0.15)';
+                                        }
+                                    }
+                                    return 'rgba(0, 0, 0, 0.05)';
+                                }
+                            },
+                            afterFit: function(scaleInstance) {
+                                scaleInstance.height = 50; // Fixed height for x-axis
                             }
                         },
                         y: {
@@ -362,7 +493,12 @@
                                 display: true,
                                 text: 'Portfolio Value ($) - Log Scale'
                             },
+                            afterFit: function(scaleInstance) {
+                                scaleInstance.width = 80; // Fixed width for y-axis
+                            },
                             ticks: {
+                                autoSkip: false,
+                                maxTicksLimit: 50,
                                 callback: function(value) {
                                     // Only show major ticks (powers of 10)
                                     const log = Math.log10(value);
@@ -420,6 +556,247 @@
                     }
                 }
             });
+        }
+
+        // Load and render both breadth charts
+        async function loadAndRenderBreadthCharts(days = 'max') {
+            try {
+                console.log('loadAndRenderBreadthCharts called with days:', days);
+                console.log('Loading breadth charts, models available:', models.length);
+                
+                // Build query parameter
+                const daysParam = days === 'max' ? 'days=100000' : (days === 'ytd' ? `days=${getDaysFromYTD()}` : `days=${days}`);
+                
+                // Find models with backtest data
+                const nasdaqModels = models.filter(m => !m.is_meta && m.index_type === 'NASDAQ_100');
+                const sp500Models = models.filter(m => !m.is_meta && m.index_type === 'SP_500');
+                
+                console.log('NASDAQ models:', nasdaqModels.map(m => m.name));
+                console.log('SP500 models:', sp500Models.map(m => m.name));
+                
+                if (nasdaqModels.length === 0 || sp500Models.length === 0) {
+                    console.warn('Could not find both NASDAQ and S&P 500 models for breadth charts');
+                    showError('Need both NASDAQ and S&P 500 models for breadth indicators');
+                    return;
+                }
+                
+                // Try to fetch data from available models
+                let nasdaqData = null;
+                let nasdaqModel = null;
+                
+                for (const model of nasdaqModels) {
+                    console.log(`Trying NASDAQ model: ${model.name}`);
+                    const response = await fetch(`/api/v1/models/${model.id}/backtest?${daysParam}`);
+                    if (response.ok) {
+                        nasdaqData = await response.json();
+                        nasdaqModel = model;
+                        console.log(`Success: ${model.name} has ${nasdaqData.data_points.length} data points`);
+                        break;
+                    } else {
+                        console.log(`Failed: ${model.name} - Status ${response.status}`);
+                    }
+                }
+                
+                let sp500Data = null;
+                let sp500Model = null;
+                
+                for (const model of sp500Models) {
+                    console.log(`Trying SP500 model: ${model.name}`);
+                    const response = await fetch(`/api/v1/models/${model.id}/backtest?${daysParam}`);
+                    if (response.ok) {
+                        sp500Data = await response.json();
+                        sp500Model = model;
+                        console.log(`Success: ${model.name} has ${sp500Data.data_points.length} data points`);
+                        break;
+                    } else {
+                        console.log(`Failed: ${model.name} - Status ${response.status}`);
+                    }
+                }
+                
+                if (!nasdaqData || !sp500Data) {
+                    const missing = [];
+                    if (!nasdaqData) missing.push('NASDAQ');
+                    if (!sp500Data) missing.push('S&P 500');
+                    showError(`No backtest data available for ${missing.join(' and ')} models. Please run: python -m app.cli.ingest --backtest --model <model_name>`);
+                    return;
+                }
+                
+                console.log('NASDAQ data points:', nasdaqData.data_points.length);
+                console.log('SP500 data points:', sp500Data.data_points.length);
+                
+                // sharedXAxisConfig already set from portfolio chart
+                // Just verify both datasets are within range
+                console.log('Using shared x-axis range:', sharedXAxisConfig);
+                
+                console.log('Rendering breadth charts...');
+                // Render both charts
+                renderBreadthChart(nasdaqData, 'breadthChartNasdaq', true, false);  // Show labels, hide title
+                renderBreadthChart(sp500Data, 'breadthChartSp500', true, true);     // Show labels, show title
+                console.log('Breadth charts rendered successfully');
+            } catch (error) {
+                console.error('Error loading breadth charts:', error);
+                showError('Error loading breadth charts: ' + error.message);
+            }
+        }
+
+        // Render Market Breadth Chart
+        function renderBreadthChart(data, canvasId, showXAxisLabels, showXAxisTitle) {
+            console.log(`renderBreadthChart called for ${canvasId}, data points: ${data.data_points.length}`);
+            const ctx = document.getElementById(canvasId);
+            
+            if (!ctx) {
+                console.error(`Canvas element not found: ${canvasId}`);
+                return;
+            }
+            
+            console.log('Canvas element found:', ctx);
+            
+            // Destroy existing chart
+            if (canvasId === 'breadthChartNasdaq' && breadthChartNasdaq) {
+                breadthChartNasdaq.destroy();
+            } else if (canvasId === 'breadthChartSp500' && breadthChartSp500) {
+                breadthChartSp500.destroy();
+            }
+            
+            // Prepare datasets
+            const dates = data.data_points.map(d => d.date);
+            const newHighs = data.data_points.map(d => d.new_highs);
+            const newLows = data.data_points.map(d => d.new_lows);
+            
+            const chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [
+                        {
+                            label: 'New Highs',
+                            data: newHighs,
+                            borderColor: '#2ca02c',  // Green
+                            backgroundColor: 'transparent',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            tension: 0
+                        },
+                        {
+                            label: 'New Lows',
+                            data: newLows,
+                            borderColor: '#d62728',  // Red
+                            backgroundColor: 'transparent',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            tension: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            left: 0
+                        }
+                    },
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'chartArea',
+                            align: 'start',
+                            labels: {
+                                usePointStyle: false,
+                                boxWidth: 60,
+                                boxHeight: 1.5
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.parsed.y}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: sharedXAxisConfig?.min,
+                            max: sharedXAxisConfig?.max,
+                            time: {
+                                unit: 'year',
+                                stepSize: 1,  // Generate ticks every year
+                                displayFormats: {
+                                    year: 'yyyy'
+                                }
+                            },
+                            title: {
+                                display: showXAxisTitle,
+                                text: 'Date'
+                            },
+                            ticks: {
+                                display: showXAxisLabels,
+                                callback: function(value, index, ticks) {
+                                    if (!showXAxisLabels) return '';
+                                    const date = new Date(value);
+                                    const year = date.getFullYear();
+                                    // Only show label for years divisible by 5
+                                    if (year % 5 === 0) {
+                                        return year;
+                                    }
+                                    return '';  // Empty label for minor ticks
+                                },
+                                major: {
+                                    enabled: true
+                                },
+                                autoSkip: false,  // Don't auto-skip to ensure all ticks are generated
+                                maxRotation: 0,
+                                minRotation: 0
+                            },
+                            grid: {
+                                display: true,
+                                drawTicks: true,
+                                color: function(context) {
+                                    if (context.tick && context.tick.value) {
+                                        const date = new Date(context.tick.value);
+                                        const year = date.getFullYear();
+                                        // Draw major grid lines (every 5 years) darker
+                                        if (year % 5 === 0) {
+                                            return 'rgba(0, 0, 0, 0.15)';
+                                        }
+                                    }
+                                    return 'rgba(0, 0, 0, 0.05)';
+                                }
+                            },
+                            afterFit: function(scaleInstance) {
+                                scaleInstance.height = 50; // Fixed height for x-axis (matches other charts)
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Count'
+                            },
+                            afterFit: function(scaleInstance) {
+                                scaleInstance.width = 80; // Fixed width for y-axis (matches portfolio chart)
+                            },
+                            ticks: {
+                                precision: 0,
+                                autoSkip: false
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Store chart reference
+            if (canvasId === 'breadthChartNasdaq') {
+                breadthChartNasdaq = chart;
+            } else if (canvasId === 'breadthChartSp500') {
+                breadthChartSp500 = chart;
+            }
         }
 
         // Error handling

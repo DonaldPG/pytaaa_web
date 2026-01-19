@@ -155,19 +155,45 @@ Add backtesting visualization showing model portfolio performance vs buy-and-hol
 
 ---
 
-## Phase 5B: Extended Backtest Features (Future) `4-6h`
+## Phase 5B: Market Breadth Indicators ✅ `3h actual`
 
 ### Overview
-Extend backtest visualization with model selection timeline and market breadth indicators.
+Extend backtest visualization with market breadth indicators (new highs/lows) for NASDAQ 100 and S&P 500.
 
-### Key Requirements Summary
-1. **New Navigation Button**: Add "Backtests of models" button next to "Compare all models" on dashboard
-2. **New Web Page**: Create `backtest.html` with interactive 4-subplot visualization
-3. **Data Sources**: 
-   - Recommendation plot: `/Users/donaldpg/pyTAAA_data/naz100_sp500_abacus/pyTAAA_web/recommendation_plot.png`
-   - NASDAQ backtest data: `/Users/donaldpg/pyTAAA_data/naz100_pine/data_store/pyTAAAweb_backtestPortfolioValue.params`
-   - S&P 500 backtest data: `/Users/donaldpg/pyTAAA_data/sp500_pine/data_store/pyTAAAweb_backtestPortfolioValue.params`
-4. **Time Period Selector**: Same dropdown as comparison page (30d, 90d, 180d, YTD, 1y, 2y, 3y, 5y, 10y, max)
+### Completed Features
+- ✅ **NASDAQ 100 Breadth Chart**: Green lines (new highs) + red lines (new lows) from naz100_pine backtest data
+- ✅ **S&P 500 Breadth Chart**: Green lines (new highs) + red lines (new lows) from sp500_pine backtest data
+- ✅ **Model Selection Logic**: Iterates through models to find first with backtest data (handles sp500_hma=0 points)
+- ✅ **Shared X-Axis**: All 3 charts synchronized with same date range
+- ✅ **Visual Refinements**: 
+  - Chart heights reduced (breadth: 125px)
+  - Smaller titles (0.9rem, font-weight 600)
+  - Reduced spacing (padding: 15px, margin: 10px)
+- ✅ **Perfect Grid Alignment**: 
+  - Fixed y-axis width: 80px (using afterFit callbacks)
+  - Fixed x-axis height: 50px (using afterFit callbacks)
+- ✅ **Major/Minor Ticks**: 
+  - Major ticks every 5 years with labels (darker grid lines)
+  - Minor ticks every 1 year without labels (lighter grid lines)
+- ✅ **X-Axis Labels**: All 3 charts show year labels, bottom chart has "Date" title
+
+### Deferred to Future
+- Model selection timeline (Subplot 2 - "abacus" style) - no data source available
+  - Would require PyTAAA modifications or complex inference logic
+  - Current focus on performance visualization rather than switch detection
+
+---
+
+## Phase 5C: Extended Backtest Features (Future) `2-4h`
+
+### Overview
+Additional backtest features deferred from Phase 5B.
+
+### Key Requirements Summary - Model Selection Timeline
+1. **Model Selection Timeline (Subplot 2)**: "Abacus" style visualization showing which model was selected at each period
+   - Deferred due to no data source
+   - Requires PyTAAA modifications or complex model selection logic porting
+   - See "Model Switching Data Generation Options" section below for implementation approaches
 
 ### Data Format Understanding
 **File**: `pyTAAAweb_backtestPortfolioValue.params`
@@ -638,4 +664,45 @@ Implementation Approaches**ate_model_switching_portfolio()` `1.5h`
 ---
 
 **Total Estimated Effort (all phases)**: 50-53 hours
-**Actual Effort to Date**: Phase 1-4 (20h) + Phase 5A (8h) = **28 hours completed**
+**Actual Effort to Date**: 
+- Phase 1-4: 20h
+- Phase 5A (Portfolio Chart): 8h
+- Phase 5B (Breadth Indicators + Period Selector): 3h
+- **Total completed: 31 hours**
+
+---
+
+## What's Next
+
+The project has completed **Phase 5B** (market breadth indicators). Here are the logical next steps:
+
+### Option 1: Phase 5C - Model Selection Timeline `4-6h`
+Add the "abacus" style model selection timeline (Subplot 2) showing which model the meta-model selected at each period. **Requires decision**:
+- **Path A**: Modify PyTAAA to export model selection history to `.params` file (3-4h PyTAAA + 2h pytaaa_web)
+- **Path B**: Port model selection logic to pytaaa_web backend (4-5h pytaaa_web only)
+
+**Trade-off**: Path B is self-contained but duplicates logic. Path A keeps logic in PyTAAA but requires coordination.
+
+### Option 2: Phase 6 - Production Readiness `6h`
+Prepare the application for long-term deployment:
+- Docker compose with persistent PostgreSQL volumes
+- Daily cron job for automatic data ingestion
+- Error monitoring and alerting
+- Comprehensive deployment documentation
+
+**Value**: Moves from development prototype to production-ready service.
+
+### Option 3: Phase 7 - Internet Deployment (Raspberry Pi) `8h`
+Deploy to internet-accessible Raspberry Pi with:
+- Nginx reverse proxy with HTTPS and basic auth
+- Docker containers optimized for ARM64
+- Automated rsync for Mac → Pi data synchronization
+- Security hardening (fail2ban, IP whitelist)
+- DuckDNS dynamic DNS setup
+
+**Value**: Makes dashboard accessible from anywhere (phone, work, etc.)
+
+### Recommendation
+**Start with Phase 6 (Production Readiness)** - it provides immediate value by making the current features reliable and maintainable, without requiring architectural decisions about model selection logic or infrastructure setup. You can still use the dashboard daily while it's running reliably in Docker.
+
+After Phase 6, you can decide between Phase 5C (more analytical features) or Phase 7 (internet access) based on your priorities.

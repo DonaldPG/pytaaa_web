@@ -61,7 +61,10 @@ python -m app.cli.ingest --data-dir /Users/donaldpg/pyTAAA_data/naz100_sp500_aba
 # 4. Import backtest data (optional, for backtesting visualization)
 python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/naz100_hma --model naz100_hma
 python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/naz100_pine --model naz100_pine
+python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/naz100_pi --model naz100_pi
+python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/sp500_hma --model sp500_hma
 python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/sp500_pine --model sp500_pine
+python -m app.cli.ingest --backtest --data-dir /Users/donaldpg/pyTAAA_data/naz100_sp500_abacus --model naz100_sp500_abacus
 
 # 5. Start API server
 uvicorn app.main:app --reload

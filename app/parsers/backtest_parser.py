@@ -61,6 +61,12 @@ def parse_backtest_file(file_path: Path) -> List[Dict]:
                     new_highs = int(float(highs_str))  # Convert float to int
                     new_lows = int(float(lows_str))    # Convert float to int
                     
+                    # Clean invalid values (< -99999 indicates missing/invalid data)
+                    if new_highs < -99999:
+                        new_highs = 0
+                    if new_lows < -99999:
+                        new_lows = 0
+                    
                     backtest_data.append({
                         'date': parsed_date,
                         'buy_hold_value': buy_hold_value,

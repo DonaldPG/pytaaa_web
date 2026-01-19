@@ -369,6 +369,7 @@ async def get_model_holdings_by_date(
 @router.get("/{model_id}/backtest", response_model=BacktestResponse)
 async def get_backtest_data(
     model_id: UUID,
+    days: int = Query(default=100000, ge=1, le=100000, description="Number of days to include"),
     db: AsyncSession = Depends(get_db)
 ):
     """Get backtest portfolio value data for a specific model.
@@ -377,14 +378,23 @@ async def get_backtest_data(
     - buy_hold_value: Buy-and-hold baseline
     - traded_value: Model-switched portfolio value
     - new_highs/new_lows: Market breadth indicators
+    
+    Args:
+        model_id: UUID of the model
+        days: Number of days of history to return (default: 100000 = all data)
     """
     # Validate model exists
     model = await get_model_or_404(model_id, db)
     
-    # Get backtest data ordered by date
+    # Calculate cutoff date
+    today = date_type.today()
+    cutoff_date = today - timedelta(days=days)
+    
+    # Get backtest data ordered by date, filtered by date range
     result = await db.execute(
         select(BacktestData)
         .where(BacktestData.model_id == model_id)
+        .where(BacktestData.date >= cutoff_date)
         .order_by(BacktestData.date)
     )
     backtest_records = result.scalars().all()
