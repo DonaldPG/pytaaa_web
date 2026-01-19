@@ -199,7 +199,15 @@
             </div>
         </div>
 
-        <!-- Phase 5B: Subplot 2 - NASDAQ 100 Market Breadth -->
+        <!-- Phase 5C: Subplot 2 - Model Selection Timeline -->
+        <div class="chart-container">
+            <h2>Model Selection Timeline (which model should have been selected)</h2>
+            <div class="chart-wrapper" style="height: 169px; min-height: 169px;">
+                <canvas id="modelSelectionChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Phase 5B: Subplot 3 - NASDAQ 100 Market Breadth -->
         <div class="chart-container">
             <h2>NASDAQ 100 Market Breadth: New Highs vs New Lows</h2>
             <div class="chart-wrapper" style="height: 125px; min-height: 125px;">
@@ -207,7 +215,7 @@
             </div>
         </div>
 
-        <!-- Phase 5B: Subplot 3 - S&P 500 Market Breadth -->
+        <!-- Phase 5B: Subplot 4 - S&P 500 Market Breadth -->
         <div class="chart-container">
             <h2>S&P 500 Market Breadth: New Highs vs New Lows</h2>
             <div class="chart-wrapper" style="height: 125px; min-height: 125px;">
@@ -223,6 +231,7 @@
         let portfolioChart = null;
         let breadthChartNasdaq = null;
         let breadthChartSp500 = null;
+        let modelSelectionChart = null;
         let sharedXAxisConfig = null;
 
         // Helper function to calculate days from start of year to today
@@ -234,11 +243,24 @@
             return diffDays;
         }
 
-        // Chart colors (matching recommendation_plot.png styling)
+        // Chart colors (matching specification from ROADMAP.md)
         const COLORS = {
-            traded: '#1f77b4',      // Blue - model-switched portfolio
-            buyHoldNaz: '#2ca02c',  // Green - NASDAQ buy-and-hold
-            buyHoldSp: '#ff7f0e'    // Orange - S&P 500 buy-and-hold
+            // Individual model portfolio curves (3px)
+            naz100_pine: 'rgb(0, 123, 220)',      // Blue
+            naz100_hma: 'rgb(220, 0, 0)',          // Red
+            naz100_pi: 'rgb(0, 220, 0)',           // Green
+            sp500_hma: 'rgb(0, 206, 209)',         // Cyan
+            sp500_pine: 'rgb(250, 0, 250)',        // Magenta (bright)
+            
+            // Meta-model (naz100_sp500_abacus) - bold 5px
+            metaModel: 'rgb(25, 25, 25)',          // Black
+            
+            // Buy and Hold curves (1px thin)
+            buyHoldNaz: 'rgb(128, 20, 20)',        // Dark red
+            buyHoldSp: 'rgb(20, 20, 128)',         // Dark blue
+            
+            // CASH dot for model selection
+            cash: 'rgb(25, 25, 25)'                // Black
         };
 
         // Initialize
@@ -343,6 +365,7 @@
                 
                 renderPortfolioChart(data);
                 await loadAndRenderBreadthCharts(days);
+                await loadAndRenderModelSelectionChart(days);
             } catch (error) {
                 showError(error.message);
                 if (portfolioChart) {
@@ -356,6 +379,10 @@
                 if (breadthChartSp500) {
                     breadthChartSp500.destroy();
                     breadthChartSp500 = null;
+                }
+                if (modelSelectionChart) {
+                    modelSelectionChart.destroy();
+                    modelSelectionChart = null;
                 }
             }
         }
@@ -386,9 +413,9 @@
                         {
                             label: data.model_name,
                             data: tradedValues,
-                            borderColor: COLORS.traded,
+                            borderColor: COLORS[data.model_name] || COLORS.metaModel,
                             backgroundColor: 'transparent',
-                            borderWidth: 2,
+                            borderWidth: data.model_name === 'naz100_sp500_abacus' ? 5 : 3,  // 5px for meta-model, 3px for others
                             pointRadius: 0,
                             tension: 0
                         },
@@ -397,7 +424,7 @@
                             data: buyHoldValues,
                             borderColor: buyHoldColor,
                             backgroundColor: 'transparent',
-                            borderWidth: 2,
+                            borderWidth: 1,  // 1px thin for buy-and-hold
                             pointRadius: 0,
                             tension: 0
                         }
@@ -797,6 +824,212 @@
             } else if (canvasId === 'breadthChartSp500') {
                 breadthChartSp500 = chart;
             }
+        }
+
+        // Load and render model selection timeline (Phase 5C)
+        async function loadAndRenderModelSelectionChart(days = 'max') {
+            try {
+                console.log('loadAndRenderModelSelectionChart called with days:', days);
+                
+                // Find meta-model
+                const metaModel = models.find(m => m.is_meta);
+                if (!metaModel) {
+                    console.log('No meta-model found, skipping model selection chart');
+                    return;
+                }
+                
+                // Build query parameters
+                const daysParam = days === 'max' ? 100000 : (days === 'ytd' ? getDaysFromYTD() : days);
+                const url = `/api/v1/models/meta/${metaModel.id}/selections?days=${daysParam}&sample_rate=21&lookbacks=55,157,174`;
+                
+                console.log('Fetching model selections from:', url);
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        console.log('No backtest data for meta-model, skipping model selection chart');
+                        return;
+                    }
+                    throw new Error('Failed to fetch model selections');
+                }
+                
+                const selectionData = await response.json();
+                console.log('Model selection data:', selectionData);
+                
+                renderModelSelectionChart(selectionData);
+            } catch (error) {
+                console.error('Error loading model selection chart:', error);
+                // Don't show error to user - this chart is optional
+            }
+        }
+
+        // Render Model Selection Timeline Chart (Subplot 4)
+        function renderModelSelectionChart(selectionData) {
+            const ctx = document.getElementById('modelSelectionChart');
+            
+            if (!ctx) {
+                console.error('Canvas element not found: modelSelectionChart');
+                return;
+            }
+            
+            if (modelSelectionChart) {
+                modelSelectionChart.destroy();
+            }
+            
+            // Get unique model names from selections
+            const modelNames = [...new Set(selectionData.selections.map(s => s.selected_model))].sort();
+            
+            // Create color mapping for models - use consistent colors from COLORS constant
+            const modelColors = {
+                'naz100_pine': COLORS.naz100_pine,   // Blue
+                'naz100_hma': COLORS.naz100_hma,     // Red
+                'naz100_pi': COLORS.naz100_pi,       // Green
+                'sp500_hma': COLORS.sp500_hma,       // Cyan
+                'sp500_pine': COLORS.sp500_pine,     // Magenta
+                'sp500_pi': COLORS.sp500_pine,       // Magenta (if exists, same as sp500_pine)
+                'naz100_sp500_abacus': COLORS.metaModel,  // Black for meta-model
+                'cash': COLORS.cash                  // Black for cash
+            };
+            
+            // Prepare data points - each selection becomes a scatter point
+            const datasets = modelNames.map(modelName => {
+                const points = selectionData.selections
+                    .filter(s => s.selected_model === modelName)
+                    .map(s => ({
+                        x: s.date,
+                        y: modelName
+                    }));
+                
+                return {
+                    label: modelName,
+                    data: points,
+                    backgroundColor: modelColors[modelName] || '#999',
+                    borderColor: modelColors[modelName] || '#999',
+                    pointRadius: 3,
+                    pointHoverRadius: 5
+                };
+            });
+            
+            modelSelectionChart = new Chart(ctx, {
+                type: 'scatter',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    },
+                    layout: {
+                        padding: {
+                            bottom: 0  // Reduce space between chart and legend
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            align: 'center',
+                            labels: {
+                                boxWidth: 7,
+                                font: { size: 12 },
+                                padding: 20,  // Increased horizontal spacing between entries
+                                usePointStyle: true,
+                                pointStyleWidth: 7
+                            }
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: sharedXAxisConfig?.min,
+                            max: sharedXAxisConfig?.max,
+                            time: {
+                                unit: 'year',
+                                stepSize: 1,
+                                displayFormats: {
+                                    year: 'yyyy'
+                                }
+                            },
+                            title: {
+                                display: false
+                            },
+                            ticks: {
+                                display: true,
+                                callback: function(value, index, ticks) {
+                                    const date = new Date(value);
+                                    const year = date.getFullYear();
+                                    // Only show label for years divisible by 5
+                                    if (year % 5 === 0) {
+                                        return year;
+                                    }
+                                    return '';  // Empty label for minor ticks
+                                },
+                                major: {
+                                    enabled: true
+                                },
+                                autoSkip: false,
+                                maxRotation: 0,
+                                minRotation: 0
+                            },
+                            grid: {
+                                display: true,
+                                drawTicks: true,
+                                color: function(context) {
+                                    if (context.tick && context.tick.value) {
+                                        const date = new Date(context.tick.value);
+                                        const year = date.getFullYear();
+                                        // Draw major grid lines (every 5 years) darker
+                                        if (year % 5 === 0) {
+                                            return 'rgba(0, 0, 0, 0.15)';
+                                        }
+                                    }
+                                    return 'rgba(0, 0, 0, 0.05)';
+                                }
+                            },
+                            afterFit: function(scaleInstance) {
+                                scaleInstance.height = 25; // Minimize whitespace above legend
+                            }
+                        },
+                        y: {
+                            type: 'category',
+                            labels: modelNames,
+                            title: {
+                                display: false
+                            },
+                            grid: {
+                                display: true,
+                                drawBorder: true,
+                                drawOnChartArea: true,
+                                color: 'rgba(0, 0, 0, 0.15)',  // Slightly darker for visibility
+                                lineWidth: 1
+                            },
+                            afterFit: function(scaleInstance) {
+                                scaleInstance.width = 120; // Increased from 80 to accommodate model names
+                            },
+                            ticks: {
+                                display: true,
+                                font: {
+                                    size: 10  // Slightly larger for readability
+                                },
+                                color: '#333',
+                                autoSkip: false  // Show all model labels
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         // Error handling
