@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 from uuid import UUID
 from app.db.session import get_db
-from app.models.trading import TradingModel, PerformanceMetric, PortfolioSnapshot, PortfolioHolding
+from app.models.trading import TradingModel, PerformanceMetric, PortfolioSnapshot, PortfolioHolding, BacktestData
 from app.schemas.trading import (
     TradingModel as TradingModelSchema,
     ModelWithLatestValue,
@@ -14,7 +14,11 @@ from app.schemas.trading import (
     HoldingsResponse,
     HoldingDetail,
     ComparisonResponse,
-    ModelPerformanceSeries
+    ModelPerformanceSeries,
+    BacktestResponse,
+    BacktestDataPoint,
+    BacktestComparisonResponse,
+    BacktestModelSeries
 )
 
 router = APIRouter()
@@ -360,3 +364,108 @@ async def get_model_holdings_by_date(
         holdings=holding_details,
         active_sub_model_name=active_sub_model_name
     )
+
+
+@router.get("/{model_id}/backtest", response_model=BacktestResponse)
+async def get_backtest_data(
+    model_id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get backtest portfolio value data for a specific model.
+    
+    Returns historical backtest data with:
+    - buy_hold_value: Buy-and-hold baseline
+    - traded_value: Model-switched portfolio value
+    - new_highs/new_lows: Market breadth indicators
+    """
+    # Validate model exists
+    model = await get_model_or_404(model_id, db)
+    
+    # Get backtest data ordered by date
+    result = await db.execute(
+        select(BacktestData)
+        .where(BacktestData.model_id == model_id)
+        .order_by(BacktestData.date)
+    )
+    backtest_records = result.scalars().all()
+    
+    if not backtest_records:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No backtest data found for model {model.name}"
+        )
+    
+    data_points = [
+        BacktestDataPoint(
+            date=record.date,
+            buy_hold_value=record.buy_hold_value,
+            traded_value=record.traded_value,
+            new_highs=record.new_highs,
+            new_lows=record.new_lows
+        )
+        for record in backtest_records
+    ]
+    
+    return BacktestResponse(
+        model_id=model.id,
+        model_name=model.name,
+        index_type=model.index_type,
+        data_points=data_points
+    )
+
+
+@router.get("/backtest/compare", response_model=BacktestComparisonResponse)
+async def compare_backtest_data(
+    model_ids: List[UUID] = Query(..., description="List of model IDs to compare"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Compare backtest data across multiple models.
+    
+    Useful for visualizing how different models performed during backtesting.
+    """
+    if not model_ids:
+        raise HTTPException(status_code=400, detail="At least one model_id required")
+    
+    model_series = []
+    
+    for model_id in model_ids:
+        # Validate model exists
+        model = await get_model_or_404(model_id, db)
+        
+        # Get backtest data
+        result = await db.execute(
+            select(BacktestData)
+            .where(BacktestData.model_id == model_id)
+            .order_by(BacktestData.date)
+        )
+        backtest_records = result.scalars().all()
+        
+        if not backtest_records:
+            # Skip models without backtest data instead of failing
+            continue
+        
+        data_points = [
+            BacktestDataPoint(
+                date=record.date,
+                buy_hold_value=record.buy_hold_value,
+                traded_value=record.traded_value,
+                new_highs=record.new_highs,
+                new_lows=record.new_lows
+            )
+            for record in backtest_records
+        ]
+        
+        model_series.append(BacktestModelSeries(
+            model_id=model.id,
+            model_name=model.name,
+            index_type=model.index_type,
+            data_points=data_points
+        ))
+    
+    if not model_series:
+        raise HTTPException(
+            status_code=404,
+            detail="No backtest data found for any of the requested models"
+        )
+    
+    return BacktestComparisonResponse(models=model_series)

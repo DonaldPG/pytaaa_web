@@ -115,3 +115,33 @@ class ComparisonResponse(BaseModel):
     days: int
     models: List[ModelPerformanceSeries]
     model_config = ConfigDict(protected_namespaces=())
+
+# Backtest schemas
+class BacktestDataPoint(BaseModel):
+    """Single backtest data point"""
+    date: date
+    buy_hold_value: float
+    traded_value: float
+    new_highs: int
+    new_lows: int
+
+class BacktestResponse(BaseModel):
+    """Backtest data for a single model"""
+    model_id: UUID
+    model_name: str
+    index_type: IndexType
+    data_points: List[BacktestDataPoint]
+    model_config = ConfigDict(protected_namespaces=())
+
+class BacktestModelSeries(BaseModel):
+    """Backtest series for one model"""
+    model_id: UUID
+    model_name: str
+    index_type: IndexType
+    data_points: List[BacktestDataPoint]
+
+class BacktestComparisonResponse(BaseModel):
+    """Backtest comparison of multiple models"""
+    models: List[BacktestModelSeries]
+    model_config = ConfigDict(protected_namespaces=())
+

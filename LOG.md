@@ -216,3 +216,58 @@
   - **Right**: Time Period selector
   - **Removed**: Unnecessary vertical spacing and separate header rows
   - **Impact**: More compact layout, more screen space for chart and holdings table
+
+## [2026-01-18] - Phase 5A MVP: Backtest Visualization Complete ✅ `8h actual`
+- **Backend - Data Models & Parsers** `3h`
+  - Created `BacktestData` model in `app/models/trading.py` with fields: buy_hold_value, traded_value, new_highs, new_lows
+  - Added compound index on (model_id, date) for efficient queries
+  - Created Alembic migration `d8c4f8911cbb_add_backtest_data_table.py` - applied successfully
+  - Built `backtest_parser.py` to parse space-delimited `.params` files (5 columns: date, buy_hold, traded, highs, lows)
+  - Extended CLI with `--backtest` flag: `python -m app.cli.ingest --backtest --model <name>`
+  - Handled float→int conversion for new_highs/new_lows: `int(float(value))`
+- **Backend - API Endpoints** `1.5h`
+  - Added GET `/api/v1/models/{model_id}/backtest` endpoint
+  - Added GET `/api/v1/models/backtest/compare` endpoint (for future multi-model comparison)
+  - Created response schemas: `BacktestResponse`, `BacktestDataPoint`, `BacktestComparisonResponse`, `BacktestModelSeries`
+  - Returns chronological data with all fields, <500ms response time
+- **Frontend - Visualization Page** `2.5h`
+  - Created `app/static/backtest.html` with Chart.js time series visualization
+  - Implemented logarithmic y-axis scale (type: 'logarithmic', min: 10K, max: 100B)
+  - Custom tick generation: Powers of 10 from 10^4 to 10^11 with minor ticks (2-9 multiples)
+  - Label formatting: K/M/B notation with spaces (e.g., "$10K", "$1 M", "$10 B")
+  - Two-line chart: Model portfolio (blue) vs Buy-and-Hold baseline (green/orange)
+  - Model selector in chart header (right-aligned)
+  - Legend: Upper left corner inside chart, line-style indicators (60px × 1.5px)
+  - Auto-selects first non-meta model on page load
+- **Dashboard Integration** `0.25h`
+  - Added "📈 Backtest Results" button to dashboard header
+  - Button positioned next to "Compare All Models" with matching styling
+- **Data Ingestion & Testing** `0.75h`
+  - Ingested backtest data for 3 models:
+    - naz100_hma: 8,826 data points (1991-2025)
+    - naz100_pine: 8,826 data points (1991-2025)
+    - sp500_pine: 6,560 data points (2000-2025)
+  - Verified API endpoint: Returns correct JSON with all fields
+  - Tested chart: Logarithmic scale, proper tick marks, responsive legend
+- **Chart Refinements** `0.5h`
+  - Increased maxTicksLimit from 20 to 50 to display all powers of 10
+  - Moved legend from top to upper left inside chart area (position: 'chartArea', align: 'start')
+  - Changed legend indicators from boxes to lines (usePointStyle: false, boxWidth: 60, boxHeight: 1.5)
+  - Removed "(Model-Switched)" suffix from dataset labels (just shows model name)
+  - Chart title and model selector on same line using flexbox layout
+- **Key Technical Decisions**:
+  - Logarithmic scale needed: Portfolio values range from $10K to $10M+ (1000x difference)
+  - Powers of 10 from 10^4 to 10^11 provide clear visualization across entire range
+  - Minor ticks (2-9 multiples) with barely visible grid lines (3% opacity) vs major (15%)
+  - Two lines sufficient for MVP: Model portfolio + appropriate buy-and-hold baseline
+  - Deferred to Phase 5B: Model selection timeline (Subplot 2), breadth indicators (Subplots 3-4)
+- **Performance Metrics**:
+  - API response time: <300ms for 8,826 data points
+  - Chart render time: <500ms with logarithmic scale
+  - Page load: <1s including Chart.js library
+- **Files Modified/Created** (9 files):
+  - Modified: `app/models/trading.py`, `app/schemas/trading.py`, `app/api/v1/endpoints/models.py`
+  - Modified: `app/cli/ingest.py`, `app/static/dashboard.html`
+  - Created: `app/parsers/backtest_parser.py`, `app/static/backtest.html`
+  - Created: `migrations/versions/d8c4f8911cbb_add_backtest_data_table.py`
+  - Updated: `ROADMAP.md` (marked Phase 5A complete)

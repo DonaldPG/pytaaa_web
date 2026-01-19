@@ -13,10 +13,11 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
 
 from app.core.config import Settings
-from app.models.trading import TradingModel, PortfolioSnapshot, PortfolioHolding, PerformanceMetric
+from app.models.trading import TradingModel, PortfolioSnapshot, PortfolioHolding, PerformanceMetric, BacktestData
 from app.parsers.status_parser import parse_status_file
 from app.parsers.holdings_parser import parse_holdings_file
 from app.parsers.ranks_parser import parse_ranks_file
+from app.parsers.backtest_parser import parse_backtest_file
 
 
 async def ingest_model(
@@ -234,6 +235,94 @@ async def ingest_model(
         return True
 
 
+async def ingest_backtest_data(
+    data_dir: Path,
+    model_name: str,
+):
+    """Ingest backtest data for a trading model from pyTAAAweb_backtestPortfolioValue.params.
+    
+    Args:
+        data_dir: Path to data directory (e.g., /Users/donaldpg/pyTAAA_data/naz100_pine)
+        model_name: Name of the model to associate backtest data with
+    """
+    # Use localhost for CLI (not Docker internal 'db')
+    settings = Settings(POSTGRES_SERVER="localhost")
+    database_url = settings.get_database_url()
+    engine = create_async_engine(database_url)
+    async_session = async_sessionmaker(engine, expire_on_commit=False)
+    
+    # Locate backtest file (in data_store subdirectory)
+    data_store = data_dir / "data_store"
+    if not data_store.exists():
+        data_store = data_dir  # Fallback to data_dir itself
+    
+    backtest_file = data_store / "pyTAAAweb_backtestPortfolioValue.params"
+    
+    if not backtest_file.exists():
+        print(f"❌ Backtest file not found: {backtest_file}")
+        return False
+    
+    print(f"📂 Ingesting backtest data for model: {model_name}")
+    print(f"   Data file: {backtest_file}")
+    
+    # Parse backtest file
+    print("📊 Parsing backtest file...")
+    backtest_data = parse_backtest_file(backtest_file)
+    print(f"   Found {len(backtest_data)} backtest data points")
+    
+    # Create database session
+    async with async_session() as session:
+        # Get trading model
+        result = await session.execute(
+            select(TradingModel).where(TradingModel.name == model_name)
+        )
+        model = result.scalar_one_or_none()
+        
+        if not model:
+            print(f"❌ Model '{model_name}' not found. Please ingest model data first.")
+            return False
+        
+        print(f"✅ Found model '{model_name}' (ID: {model.id})")
+        
+        # Check if backtest data already exists
+        existing_result = await session.execute(
+            select(BacktestData).where(BacktestData.model_id == model.id).limit(1)
+        )
+        if existing_result.scalar_one_or_none():
+            overwrite = input("   Backtest data already exists. Overwrite? [y/N]: ")
+            if overwrite.lower() != 'y':
+                print("❌ Ingestion cancelled")
+                return False
+            
+            # Delete existing backtest data
+            print("🗑️  Deleting existing backtest data...")
+            from sqlalchemy import delete
+            await session.execute(
+                delete(BacktestData).where(BacktestData.model_id == model.id)
+            )
+            await session.commit()
+        
+        # Insert backtest data
+        print(f"💾 Inserting {len(backtest_data)} backtest data points...")
+        for i, data_dict in enumerate(backtest_data):
+            backtest_record = BacktestData(
+                model_id=model.id,
+                date=data_dict['date'],
+                buy_hold_value=data_dict['buy_hold_value'],
+                traded_value=data_dict['traded_value'],
+                new_highs=data_dict['new_highs'],
+                new_lows=data_dict['new_lows'],
+            )
+            session.add(backtest_record)
+            
+            if (i + 1) % 1000 == 0:
+                print(f"   Progress: {i + 1}/{len(backtest_data)}")
+        
+        await session.commit()
+        print(f"✅ Successfully inserted {len(backtest_data)} backtest data points")
+        return True
+
+
 def main():
     """CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -252,21 +341,26 @@ def main():
         help="Model name (e.g., naz100_pine)",
     )
     parser.add_argument(
+        "--backtest",
+        action="store_true",
+        help="Ingest backtest data only (pyTAAAweb_backtestPortfolioValue.params)",
+    )
+    parser.add_argument(
         "--index",
         type=str,
         choices=["NASDAQ_100", "SP_500"],
         default="NASDAQ_100",
-        help="Index type (default: NASDAQ_100)",
+        help="Index type (default: NASDAQ_100) - ignored for backtest-only",
     )
     parser.add_argument(
         "--description",
         type=str,
-        help="Model description",
+        help="Model description - ignored for backtest-only",
     )
     parser.add_argument(
         "--meta",
         action="store_true",
-        help="Mark as meta-model",
+        help="Mark as meta-model - ignored for backtest-only",
     )
     
     args = parser.parse_args()
@@ -276,14 +370,20 @@ def main():
         print(f"❌ Data directory not found: {args.data_dir}")
         sys.exit(1)
     
-    # Run async ingestion
-    success = asyncio.run(ingest_model(
-        data_dir=args.data_dir,
-        model_name=args.model,
-        index_type=args.index,
-        description=args.description,
-        is_meta=args.meta,
-    ))
+    # Run appropriate ingestion
+    if args.backtest:
+        success = asyncio.run(ingest_backtest_data(
+            data_dir=args.data_dir,
+            model_name=args.model,
+        ))
+    else:
+        success = asyncio.run(ingest_model(
+            data_dir=args.data_dir,
+            model_name=args.model,
+            index_type=args.index,
+            description=args.description,
+            is_meta=args.meta,
+        ))
     
     sys.exit(0 if success else 1)
 

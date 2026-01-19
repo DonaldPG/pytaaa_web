@@ -22,6 +22,7 @@ class TradingModel(Base):
 
     snapshots: Mapped[List["PortfolioSnapshot"]] = relationship("PortfolioSnapshot", back_populates="model", foreign_keys="[PortfolioSnapshot.model_id]")
     metrics: Mapped[List["PerformanceMetric"]] = relationship(back_populates="model", cascade="all, delete-orphan")
+    backtest_data: Mapped[List["BacktestData"]] = relationship(back_populates="model", cascade="all, delete-orphan")
 
 class PortfolioSnapshot(Base):
     __tablename__ = "portfolio_snapshots"
@@ -68,3 +69,23 @@ class PerformanceMetric(Base):
     daily_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     model: Mapped["TradingModel"] = relationship(back_populates="metrics")
+
+class BacktestData(Base):
+    """Backtest portfolio value data from pyTAAAweb_backtestPortfolioValue.params files."""
+    __tablename__ = "backtest_data"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_models.id"), index=True)
+    date: Mapped[DateType] = mapped_column(Date, index=True)
+    
+    # Values from pyTAAAweb_backtestPortfolioValue.params
+    buy_hold_value: Mapped[float] = mapped_column(Float)      # Column 2: buy-and-hold baseline
+    traded_value: Mapped[float] = mapped_column(Float)        # Column 3: model-switched portfolio
+    new_highs: Mapped[int] = mapped_column(Integer)           # Column 4: market breadth indicator
+    new_lows: Mapped[int] = mapped_column(Integer)            # Column 5: market breadth indicator
+
+    model: Mapped["TradingModel"] = relationship(back_populates="backtest_data")
+
+    __table_args__ = (
+        {"comment": "Daily backtest portfolio values for visualization"}
+    )
