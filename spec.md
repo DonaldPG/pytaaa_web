@@ -62,6 +62,19 @@ Daily equity curve tracking. Source: `PyTAAA_status.params` line format: `cumu_v
 - `traded_value`: Float (actual value after applying signal)
 - `daily_return`: Float (nullable, calculated)
 
+### 5. BacktestData
+Backtest portfolio values and market breadth indicators. Source: `pyTAAAweb_backtestPortfolioValue.params` (meta-model only)
+- `id`: UUID (PK)
+- `model_id`: UUID (FK)
+- `date`: Date
+- `buy_hold_value`: Float (passive buy-and-hold baseline)
+- `traded_value`: Float (active trading strategy value)
+- `new_highs`: Integer (count of stocks making new highs)
+- `new_lows`: Integer (count of stocks making new lows)
+- `selected_model`: String (nullable, 50 chars) - Which sub-model was active (6-column format only)
+  - Values: {naz100_pine, naz100_hma, naz100_pi, sp500_hma, sp500_pine, CASH}
+  - Null for non-meta models or 5-column format data
+
 ## API Endpoints (Initial)
 - `GET /api/v1/models`: List all models.
 - `GET /api/v1/models/{id}`: Get details for a specific model.
@@ -93,6 +106,16 @@ Daily equity curve tracking. Source: `PyTAAA_status.params` line format: `cumu_v
 4. **pytaaa_*.json**
    - Model configuration (uptrendSignalMethod, parameters, paths)
    - Update: Rare (only on strategy changes)
+
+5. **pyTAAAweb_backtestPortfolioValue.params** (Meta-model only)
+   - Format: Space-separated values (5 or 6 columns)
+   - Columns: `date buy_hold_value traded_value new_highs new_lows [selected_model]`
+   - 5-column format: Historical/individual models (selected_model inferred as None)
+   - 6-column format: Meta-model with actual switching decisions (2024+)
+   - Example (6-column): `2026-01-16 1851792.45 20431068801.83 42.0 8.0 naz100_hma`
+   - Size: ~300KB for 26 years (6,560 trading days)
+   - Update: Regenerated when backtest parameters change
+   - **selected_model values**: One of {naz100_pine, naz100_hma, naz100_pi, sp500_hma, sp500_pine, CASH}
 
 ### Ingestion Strategy
 - **Method**: CLI command `python -m app.cli.ingest --model <name>` (not file watchers - simpler, testable)

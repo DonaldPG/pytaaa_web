@@ -83,6 +83,7 @@ class BacktestData(Base):
     traded_value: Mapped[float] = mapped_column(Float)        # Column 3: model-switched portfolio
     new_highs: Mapped[int] = mapped_column(Integer)           # Column 4: market breadth indicator
     new_lows: Mapped[int] = mapped_column(Integer)            # Column 5: market breadth indicator
+    selected_model: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # Column 6 (abacus only): model selection
 
     model: Mapped["TradingModel"] = relationship(back_populates="backtest_data")
 

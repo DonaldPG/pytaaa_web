@@ -1,8 +1,10 @@
 """Parser for pyTAAAweb_backtestPortfolioValue.params files.
 
 Format: space-delimited columns
-Columns: date buy_hold_value traded_value new_highs new_lows
+Regular models (5 columns): date buy_hold_value traded_value new_highs new_lows
+Abacus model (6 columns): date buy_hold_value traded_value new_highs new_lows selected_model
 Example: 2013-01-03 10000.00 10000.00 42 15
+Example: 2026-01-16 327162.38 20431068801.83 7547.7 3230.3 naz100_hma
 """
 from datetime import datetime, date as DateType
 from pathlib import Path
@@ -21,7 +23,7 @@ def parse_backtest_file(file_path: Path) -> List[Dict]:
         file_path: Path to pyTAAAweb_backtestPortfolioValue.params file
         
     Returns:
-        List of dicts with keys: date, buy_hold_value, traded_value, new_highs, new_lows
+        List of dicts with keys: date, buy_hold_value, traded_value, new_highs, new_lows, selected_model (optional)
         
     Raises:
         BacktestParseError: If file format is invalid
@@ -43,14 +45,20 @@ def parse_backtest_file(file_path: Path) -> List[Dict]:
                 # Split by whitespace
                 parts = line.split()
                 
-                # Expect exactly 5 columns
-                if len(parts) != 5:
+                # Expect 5 columns (regular) or 6 columns (abacus with selected_model)
+                if len(parts) not in (5, 6):
                     raise BacktestParseError(
-                        f"Line {line_num}: Expected 5 columns, got {len(parts)}: {line}"
+                        f"Line {line_num}: Expected 5 or 6 columns, got {len(parts)}: {line}"
                     )
                 
                 try:
-                    date_str, buy_hold_str, traded_str, highs_str, lows_str = parts
+                    # Parse common fields
+                    date_str = parts[0]
+                    buy_hold_str = parts[1]
+                    traded_str = parts[2]
+                    highs_str = parts[3]
+                    lows_str = parts[4]
+                    selected_model = parts[5] if len(parts) == 6 else None
                     
                     # Parse date (YYYY-MM-DD format)
                     parsed_date = datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -67,13 +75,19 @@ def parse_backtest_file(file_path: Path) -> List[Dict]:
                     if new_lows < -99999:
                         new_lows = 0
                     
-                    backtest_data.append({
+                    data_point = {
                         'date': parsed_date,
                         'buy_hold_value': buy_hold_value,
                         'traded_value': traded_value,
                         'new_highs': new_highs,
                         'new_lows': new_lows
-                    })
+                    }
+                    
+                    # Add selected_model if present (abacus only)
+                    if selected_model:
+                        data_point['selected_model'] = selected_model
+                    
+                    backtest_data.append(data_point)
                     
                 except ValueError as e:
                     raise BacktestParseError(

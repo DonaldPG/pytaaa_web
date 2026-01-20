@@ -124,6 +124,7 @@ class BacktestDataPoint(BaseModel):
     traded_value: float
     new_highs: int
     new_lows: int
+    selected_model: Optional[str] = None  # Only populated for abacus meta-model
 
 class BacktestResponse(BaseModel):
     """Backtest data for a single model"""
@@ -143,18 +144,4 @@ class BacktestModelSeries(BaseModel):
 class BacktestComparisonResponse(BaseModel):
     """Backtest comparison of multiple models"""
     models: List[BacktestModelSeries]
-    model_config = ConfigDict(protected_namespaces=())
-
-
-class ModelSelectionPoint(BaseModel):
-    """Model selection at a specific date"""
-    date: date
-    selected_model: str
-    confidence: float
-    all_ranks: dict  # {model_name: rank_score}
-
-class ModelSelectionResponse(BaseModel):
-    """Model selection history over time"""
-    selections: List[ModelSelectionPoint]
-    lookback_periods: List[int]
     model_config = ConfigDict(protected_namespaces=())

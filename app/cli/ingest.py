@@ -312,6 +312,7 @@ async def ingest_backtest_data(
                 traded_value=data_dict['traded_value'],
                 new_highs=data_dict['new_highs'],
                 new_lows=data_dict['new_lows'],
+                selected_model=data_dict.get('selected_model'),  # Optional: only for abacus
             )
             session.add(backtest_record)
             

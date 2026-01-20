@@ -241,7 +241,7 @@ Refine chart colors and improve abacus plot user experience based on official co
   - naz100_pi: Green `rgb(0, 220, 0)`
   - sp500_hma: Cyan `rgb(0, 206, 209)`
   - sp500_pine: Magenta `rgb(250, 0, 250)` (adjusted from `rgb(199, 21, 133)` for visibility)
-  - Meta-model: Black `rgb(25, 25, 25)` with 5px line width
+  - Meta-model: Black `rgb(25, 25, 25)` with 3px line width
   - Buy & Hold: Dark red/blue `rgb(128, 20, 20)` / `rgb(20, 20, 128)` with 1px width
 - ✅ **Abacus Plot Enhancements**:
   - Height increased 35% (125px → 169px)
@@ -263,16 +263,82 @@ Refine chart colors and improve abacus plot user experience based on official co
 
 ---
 
-## Phase 5D: Extended Backtest Features (Future) `2-4h`
+## Phase 5D: Real Data Integration - Abacus Model Selection ✅ `6h actual`
 
 ### Overview
-Additional backtest features deferred from original Phase 5C.
+Integrate real model selection data from PyTAAA's updated 6-column backtest format, eliminating complex calculation logic and providing accurate historical switching decisions.
+
+### Completed Features
+- ✅ **Database Schema Enhancement** `0.5h`:
+  - Migration: Added `selected_model VARCHAR(50)` column to `backtest_data` table
+  - Model update: Added optional `selected_model` field to BacktestData SQLAlchemy model
+  - Schema update: Added `selected_model` to BacktestDataPoint Pydantic schema
+  - Backward compatible: Nullable field supports existing records and non-abacus models
+- ✅ **Parser Enhancement** `1h`:
+  - Updated `backtest_parser.py` to support both 5-column and 6-column formats
+  - Smart detection: `len(parts) in (5, 6)` to handle legacy and new formats
+  - Conditional parsing: Extracts `selected_model` only when present
+  - CLI updated to store new field during ingestion
+- ✅ **Data Re-Ingestion** `1h`:
+  - Deleted 6,060 old abacus records without `selected_model` field
+  - Re-imported 6,560 records with full 26 years of selection history (2000-2026)
+  - Distribution: 6 model types (5 individual models + CASH) across ~312 months
+- ✅ **API Endpoint Enhancement** `0.2h`:
+  - Fixed `GET /api/v1/models/{id}/backtest` to return `selected_model` field
+  - Previously missing from response despite being in database
+- ✅ **Frontend Refactoring** `2h`:
+  - Replaced calculated selections with real data from backtest endpoint
+  - Added `filterToFirstDayOfMonth()` for monthly sampling (6,560 → 312 points)
+  - Scatter plot now displays actual PyTAAA switching decisions
+  - Color-coded dots: 5 model colors + black for CASH
+- ✅ **Code Cleanup** `1h`:
+  - **Deleted**: `app/utils/model_selection.py` (400+ lines of complex calculation logic)
+  - **Removed**: `/meta/{id}/selections` API endpoint (~120 lines)
+  - **Removed**: `ModelSelectionPoint` and `ModelSelectionResponse` schemas
+  - **Total simplification**: ~500 lines of obsolete code eliminated
+- ✅ **Visual Refinements** `0.5h`:
+  - Line weights: Meta-model 5px→3px, individual models 3px→2px
+  - Model order synchronized between portfolio and abacus charts
+  - CASH dots explicitly set to black `rgb(25, 25, 25)`
+  - Y-axis labels match legend order: naz100_hma, naz100_pine, naz100_pi, sp500_hma, sp500_pine, abacus, CASH
+
+### Technical Implementation
+- **Migration**: `743db10cc8e7_add_selected_model_to_backtest_data.py`
+- **Files Modified** (6):
+  - `app/models/trading.py`
+  - `app/schemas/trading.py`
+  - `app/parsers/backtest_parser.py`
+  - `app/cli/ingest.py`
+  - `app/api/v1/endpoints/models.py`
+  - `app/static/backtest.html`
+- **Files Deleted** (1):
+  - `app/utils/model_selection.py`
+
+### Architecture Impact
+- **Simplification**: From on-demand calculation to stored real data
+- **Data Integrity**: Uses actual PyTAAA selections (not recalculated approximations)
+- **Performance**: No runtime calculations, 95% fewer chart points via monthly sampling
+- **Maintainability**: 500 lines of complex code eliminated, clearer data flow
+
+### Success Metrics
+- ✅ 6,560 records with `selected_model` populated (100% coverage)
+- ✅ 500 lines of code eliminated
+- ✅ Chart displays real selections with monthly sampling
+- ✅ Zero JavaScript errors, <1s page load
+- ✅ Visual consistency across all 4 charts
+
+---
+
+## Phase 5E: Extended Backtest Features (Future) `2-4h`
+
+### Overview
+Additional backtest features deferred from original Phase 5D.
 
 ### Key Requirements Summary - Model Selection Timeline
-1. **Model Selection Timeline (Subplot 2)**: "Abacus" style visualization showing which model was selected at each period
-   - Deferred due to no data source
-   - Requires PyTAAA modifications or complex model selection logic porting
-   - See "Model Switching Data Generation Options" section below for implementation approaches
+1. **Model Selection Timeline (Subplot 2)**: ✅ COMPLETED IN PHASE 5D
+   - Originally deferred due to no data source
+   - Now implemented using real data from PyTAAA's 6-column format
+   - Displays actual switching decisions, not calculated approximations
 
 ### Data Format Understanding
 **File**: `pyTAAAweb_backtestPortfolioValue.params`
@@ -282,22 +348,23 @@ Column 2: Buy-and-hold portfolio value (float)
 Column 3: Traded portfolio value (float)  
 Column 4: New highs count (float with 1 decimal)
 Column 5: New lows count (float with 1 decimal)
+Column 6: Selected model (string, optional) - NEW in Phase 5D
 ```
 
 **Example lines**:
 ```
 1991-01-02 10000.0 10000.0 0.0 0.0
-1991-01-03 9965.284667169899 9965.284667169899 0.0 0.0
+1991-01-03 9965.284667169899 9965.284667169899 0.0 0.0 naz100_hma
 ```
 
 ### Critical Assessment
 
-**BLOAT SCORE**: 16/20 (CONDITIONAL APPROVE)
-- ✅ Clear user value: Interactive backtest visualization
-- ✅ Existing data sources confirmed
-- ✅ Follows established patterns (parsers, API, Chart.js)
-- ⚠️ Model selection logic adds complexity - needs verification it matches PyTAAA
-- ⚠️ 8 lines on one chart may be cluttered - consider progressive disclosure
+**BLOAT SCORE**: 8/20 (APPROVED - Implemented with major simplification)
+- ✅ Clear user value: Shows actual model switching history
+- ✅ Uses existing data sources (6-column backtest file)
+- ✅ Eliminated 500 lines of speculative calculation code
+- ✅ Single source of truth (PyTAAA upstream)
+- ✅ Monthly sampling prevents chart clutter
 
 **MANDATORY IMPROVEMENTS**:
 1. **Defer breadth indicators** (Subplots 3-4) to Phase 5B - reduces scope by 25%

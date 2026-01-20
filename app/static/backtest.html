@@ -173,13 +173,9 @@
         <!-- Phase 5A MVP: Subplot 1 - Portfolio Value Comparison -->
         <div class="chart-container">
             <div class="chart-header">
-                <h2>Portfolio Value: Model vs Buy-and-Hold</h2>
+                <h2>Portfolio Value: All Models vs Buy-and-Hold</h2>
                 <div class="chart-controls">
-                    <label for="modelSelect">Select Model:</label>
-                    <select id="modelSelect">
-                        <option value="">Loading models...</option>
-                    </select>
-                    <label for="periodSelect" style="margin-left: 20px;">Time Period:</label>
+                    <label for="periodSelect">Time Period:</label>
                     <select id="periodSelect">
                         <option value="30">1 month</option>
                         <option value="90">3 months</option>
@@ -280,23 +276,10 @@
                 if (!response.ok) throw new Error('Failed to fetch models');
                 
                 models = await response.json();
-                const modelSelect = document.getElementById('modelSelect');
                 
-                modelSelect.innerHTML = '<option value="">-- Select a model --</option>';
-                models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.id;
-                    option.textContent = `${model.name} (${model.index_type})`;
-                    modelSelect.appendChild(option);
-                });
-                
-                // Auto-select first non-meta model if available
-                const firstModel = models.find(m => !m.is_meta);
-                if (firstModel) {
-                    modelSelect.value = firstModel.id;
-                    const period = document.getElementById('periodSelect').value;
-                    await loadBacktestData(firstModel.id, period);
-                }
+                // Load all models' backtest data
+                const period = document.getElementById('periodSelect').value;
+                await loadAllModelsBacktestData(period);
             } catch (error) {
                 showError('Failed to load models: ' + error.message);
             }
@@ -304,66 +287,64 @@
 
         // Setup event listeners
         function setupEventListeners() {
-            const modelSelect = document.getElementById('modelSelect');
             const periodSelect = document.getElementById('periodSelect');
-            
-            modelSelect.addEventListener('change', async (e) => {
-                if (e.target.value) {
-                    const period = periodSelect.value;
-                    await loadBacktestData(e.target.value, period);
-                }
-            });
             
             periodSelect.addEventListener('change', async (e) => {
                 const period = e.target.value;
-                const modelId = modelSelect.value;
                 
                 console.log('Period changed to:', period);
-                console.log('Current model ID:', modelId);
                 
-                // Reload portfolio chart if model is selected
-                if (modelId) {
-                    console.log('Reloading portfolio chart with period:', period);
-                    await loadBacktestData(modelId, period);
-                } else {
-                    console.log('No model selected, reloading breadth charts only');
-                    // Just reload breadth charts if no model selected
-                    await loadAndRenderBreadthCharts(period);
-                }
+                // Reload all charts
+                await loadAllModelsBacktestData(period);
             });
         }
 
-        // Load backtest data for selected model
-        async function loadBacktestData(modelId, days = 'max') {
+        // Load backtest data for all models
+        async function loadAllModelsBacktestData(days = 'max') {
             try {
                 clearError();
-                currentModelId = modelId;
                 
                 // Build query parameter
                 const daysParam = days === 'max' ? 'days=100000' : (days === 'ytd' ? `days=${getDaysFromYTD()}` : `days=${days}`);
-                const url = `/api/v1/models/${modelId}/backtest?${daysParam}`;
                 
-                console.log('loadBacktestData called with days:', days);
-                console.log('Fetching URL:', url);
+                console.log('loadAllModelsBacktestData called with days:', days);
                 
-                const response = await fetch(url);
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        throw new Error('No backtest data available for this model. Please ingest data first.');
+                // Fetch backtest data for all models in parallel
+                const backtestPromises = models.map(async model => {
+                    try {
+                        const url = `/api/v1/models/${model.id}/backtest?${daysParam}`;
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            console.warn(`No backtest data for ${model.name}`);
+                            return null;
+                        }
+                        return await response.json();
+                    } catch (error) {
+                        console.error(`Error fetching backtest for ${model.name}:`, error);
+                        return null;
                     }
-                    throw new Error('Failed to fetch backtest data');
+                });
+                
+                const allBacktestData = await Promise.all(backtestPromises);
+                const validBacktestData = allBacktestData.filter(data => data !== null);
+                
+                if (validBacktestData.length === 0) {
+                    throw new Error('No backtest data available for any model. Please ingest data first.');
                 }
                 
-                const data = await response.json();
+                // Calculate shared x-axis range from all data
+                let allDates = [];
+                validBacktestData.forEach(data => {
+                    const dates = data.data_points.map(d => new Date(d.date));
+                    allDates = allDates.concat(dates);
+                });
                 
-                // Calculate shared x-axis range from this data
-                const dates = data.data_points.map(d => new Date(d.date));
                 sharedXAxisConfig = {
-                    min: new Date(Math.min(...dates)),
-                    max: new Date(Math.max(...dates))
+                    min: new Date(Math.min(...allDates)),
+                    max: new Date(Math.max(...allDates))
                 };
                 
-                renderPortfolioChart(data);
+                renderPortfolioChartAllModels(validBacktestData);
                 await loadAndRenderBreadthCharts(days);
                 await loadAndRenderModelSelectionChart(days);
             } catch (error) {
@@ -387,48 +368,81 @@
             }
         }
 
-        // Render Portfolio Value Chart (Subplot 1)
-        function renderPortfolioChart(data) {
+        // Render Portfolio Value Chart with All Models (Subplot 1)
+        function renderPortfolioChartAllModels(allBacktestData) {
             const ctx = document.getElementById('portfolioChart');
             
             if (portfolioChart) {
                 portfolioChart.destroy();
             }
             
-            // Prepare datasets
-            const dates = data.data_points.map(d => d.date);
-            const tradedValues = data.data_points.map(d => d.traded_value);
-            const buyHoldValues = data.data_points.map(d => d.buy_hold_value);
+            // Prepare datasets for all models
+            const datasets = [];
             
-            // Determine if this is NASDAQ or S&P 500 model
-            const isNasdaq = data.index_type === 'NASDAQ_100';
-            const buyHoldColor = isNasdaq ? COLORS.buyHoldNaz : COLORS.buyHoldSp;
-            const buyHoldLabel = isNasdaq ? 'Buy & Hold (NASDAQ 100)' : 'Buy & Hold (S&P 500)';
+            // Track buy-and-hold data (only need one per index type)
+            let nasdaqBuyHold = null;
+            let sp500BuyHold = null;
+            
+            // Add individual model lines
+            allBacktestData.forEach(data => {
+                const dates = data.data_points.map(d => d.date);
+                const tradedValues = data.data_points.map(d => d.traded_value);
+                const buyHoldValues = data.data_points.map(d => d.buy_hold_value);
+                
+                // Store buy-and-hold data for later (skip meta-model for B&H baseline)
+                const isMetaModel = data.model_name === 'naz100_sp500_abacus';
+                if (data.index_type === 'NASDAQ_100' && !nasdaqBuyHold && !isMetaModel) {
+                    nasdaqBuyHold = { dates, values: buyHoldValues };
+                } else if (data.index_type === 'SP_500' && !sp500BuyHold && !isMetaModel) {
+                    sp500BuyHold = { dates, values: buyHoldValues };
+                }
+                
+                // Add model's traded portfolio line
+                const modelColor = COLORS[data.model_name] || COLORS.metaModel;
+                
+                datasets.push({
+                    label: data.model_name,
+                    data: dates.map((date, i) => ({ x: date, y: tradedValues[i] })),
+                    borderColor: modelColor,
+                    backgroundColor: 'transparent',
+                    borderWidth: isMetaModel ? 3 : 2,  // 3px for meta-model, 2px for others
+                    pointRadius: 0,
+                    tension: 0,
+                    order: isMetaModel ? 0 : 1  // Meta-model on top
+                });
+            });
+            
+            // Add buy-and-hold lines (after model lines for proper layering)
+            if (nasdaqBuyHold) {
+                datasets.push({
+                    label: 'Buy & Hold (NASDAQ 100)',
+                    data: nasdaqBuyHold.dates.map((date, i) => ({ x: date, y: nasdaqBuyHold.values[i] })),
+                    borderColor: COLORS.buyHoldNaz,
+                    backgroundColor: 'transparent',
+                    borderWidth: 1,  // 1px thin for buy-and-hold
+                    pointRadius: 0,
+                    tension: 0,
+                    order: 2  // Buy-and-hold behind models
+                });
+            }
+            
+            if (sp500BuyHold) {
+                datasets.push({
+                    label: 'Buy & Hold (S&P 500)',
+                    data: sp500BuyHold.dates.map((date, i) => ({ x: date, y: sp500BuyHold.values[i] })),
+                    borderColor: COLORS.buyHoldSp,
+                    backgroundColor: 'transparent',
+                    borderWidth: 1,  // 1px thin for buy-and-hold
+                    pointRadius: 0,
+                    tension: 0,
+                    order: 2  // Buy-and-hold behind models
+                });
+            }
             
             portfolioChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: dates,
-                    datasets: [
-                        {
-                            label: data.model_name,
-                            data: tradedValues,
-                            borderColor: COLORS[data.model_name] || COLORS.metaModel,
-                            backgroundColor: 'transparent',
-                            borderWidth: data.model_name === 'naz100_sp500_abacus' ? 5 : 3,  // 5px for meta-model, 3px for others
-                            pointRadius: 0,
-                            tension: 0
-                        },
-                        {
-                            label: buyHoldLabel,
-                            data: buyHoldValues,
-                            borderColor: buyHoldColor,
-                            backgroundColor: 'transparent',
-                            borderWidth: 1,  // 1px thin for buy-and-hold
-                            pointRadius: 0,
-                            tension: 0
-                        }
-                    ]
+                    datasets: datasets
                 },
                 options: {
                     responsive: true,
@@ -838,11 +852,11 @@
                     return;
                 }
                 
-                // Build query parameters
-                const daysParam = days === 'max' ? 100000 : (days === 'ytd' ? getDaysFromYTD() : days);
-                const url = `/api/v1/models/meta/${metaModel.id}/selections?days=${daysParam}&sample_rate=21&lookbacks=55,157,174`;
+                // Build query parameters - use backtest endpoint instead of selections
+                const daysParam = days === 'max' ? 'days=100000' : (days === 'ytd' ? `days=${getDaysFromYTD()}` : `days=${days}`);
+                const url = `/api/v1/models/${metaModel.id}/backtest?${daysParam}`;
                 
-                console.log('Fetching model selections from:', url);
+                console.log('Fetching abacus backtest data from:', url);
                 const response = await fetch(url);
                 
                 if (!response.ok) {
@@ -850,21 +864,45 @@
                         console.log('No backtest data for meta-model, skipping model selection chart');
                         return;
                     }
-                    throw new Error('Failed to fetch model selections');
+                    throw new Error('Failed to fetch abacus backtest data');
                 }
                 
-                const selectionData = await response.json();
-                console.log('Model selection data:', selectionData);
+                const backtestData = await response.json();
+                console.log('Abacus backtest data points:', backtestData.data_points.length);
                 
-                renderModelSelectionChart(selectionData);
+                // Filter to first day of each month only
+                const monthlySelections = filterToFirstDayOfMonth(backtestData.data_points);
+                console.log('Monthly selection points:', monthlySelections.length);
+                
+                renderModelSelectionChart(monthlySelections);
             } catch (error) {
                 console.error('Error loading model selection chart:', error);
                 // Don't show error to user - this chart is optional
             }
         }
+        
+        // Filter data points to first day of each month
+        function filterToFirstDayOfMonth(dataPoints) {
+            const monthlyPoints = [];
+            let lastMonth = null;
+            
+            for (const point of dataPoints) {
+                if (!point.selected_model) continue;  // Skip if no selected_model field
+                
+                const date = new Date(point.date);
+                const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+                
+                if (monthKey !== lastMonth) {
+                    monthlyPoints.push(point);
+                    lastMonth = monthKey;
+                }
+            }
+            
+            return monthlyPoints;
+        }
 
         // Render Model Selection Timeline Chart (Subplot 4)
-        function renderModelSelectionChart(selectionData) {
+        function renderModelSelectionChart(monthlySelections) {
             const ctx = document.getElementById('modelSelectionChart');
             
             if (!ctx) {
@@ -877,7 +915,11 @@
             }
             
             // Get unique model names from selections
-            const modelNames = [...new Set(selectionData.selections.map(s => s.selected_model))].sort();
+            const uniqueModels = [...new Set(monthlySelections.map(s => s.selected_model))];
+            
+            // Define display order to match upper chart legend (alphabetical by model name)
+            const modelOrder = ['naz100_hma', 'naz100_pine', 'naz100_pi', 'sp500_hma', 'sp500_pine', 'naz100_sp500_abacus', 'CASH'];
+            const modelNames = modelOrder.filter(name => uniqueModels.includes(name));
             
             // Create color mapping for models - use consistent colors from COLORS constant
             const modelColors = {
@@ -888,12 +930,12 @@
                 'sp500_pine': COLORS.sp500_pine,     // Magenta
                 'sp500_pi': COLORS.sp500_pine,       // Magenta (if exists, same as sp500_pine)
                 'naz100_sp500_abacus': COLORS.metaModel,  // Black for meta-model
-                'cash': COLORS.cash                  // Black for cash
+                'CASH': 'rgb(25, 25, 25)'            // Black for cash
             };
             
             // Prepare data points - each selection becomes a scatter point
             const datasets = modelNames.map(modelName => {
-                const points = selectionData.selections
+                const points = monthlySelections
                     .filter(s => s.selected_model === modelName)
                     .map(s => ({
                         x: s.date,

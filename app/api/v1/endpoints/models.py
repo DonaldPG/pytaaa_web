@@ -18,11 +18,8 @@ from app.schemas.trading import (
     BacktestResponse,
     BacktestDataPoint,
     BacktestComparisonResponse,
-    BacktestModelSeries,
-    ModelSelectionResponse,
-    ModelSelectionPoint
+    BacktestModelSeries
 )
-from app.utils.model_selection import ModelSelection
 
 router = APIRouter()
 
@@ -414,7 +411,8 @@ async def get_backtest_data(
             buy_hold_value=record.buy_hold_value,
             traded_value=record.traded_value,
             new_highs=record.new_highs,
-            new_lows=record.new_lows
+            new_lows=record.new_lows,
+            selected_model=record.selected_model
         )
         for record in backtest_records
     ]
@@ -482,120 +480,4 @@ async def compare_backtest_data(
         )
     
     return BacktestComparisonResponse(models=model_series)
-
-
-@router.get("/meta/{meta_model_id}/selections", response_model=ModelSelectionResponse)
-async def get_model_selections(
-    meta_model_id: UUID,
-    days: int = Query(default=365, ge=30, le=100000, description="Number of days to analyze"),
-    lookbacks: str = Query(default="55,157,174", description="Comma-separated lookback periods"),
-    sample_rate: int = Query(default=21, ge=1, le=252, description="Sample every N days (default: monthly)"),
-    db: AsyncSession = Depends(get_db)
-):
-    """Calculate model selection decisions for a meta-model over time.
-    
-    This endpoint computes which sub-model the meta-model should have selected
-    at different points in time based on historical performance analysis.
-    
-    Args:
-        meta_model_id: UUID of the meta-model
-        days: Number of days to analyze (default 365)
-        lookbacks: Comma-separated lookback periods in days (default "55,157,174")
-        sample_rate: Sample selections every N days (default 21 = monthly)
-        db: Database session
-        
-    Returns:
-        ModelSelectionResponse with selection history
-    """
-    # Validate meta-model exists and is actually a meta-model
-    meta_model = await get_model_or_404(meta_model_id, db)
-    if not meta_model.is_meta:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Model {meta_model.name} is not a meta-model"
-        )
-    
-    # Parse lookback periods
-    try:
-        lookback_periods = [int(x.strip()) for x in lookbacks.split(',')]
-    except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid lookbacks format. Use comma-separated integers (e.g., '55,157,174')"
-        )
-    
-    # Get all non-meta models (potential sub-models)
-    models_result = await db.execute(
-        select(TradingModel).where(TradingModel.is_meta == False)
-    )
-    models = models_result.scalars().all()
-    
-    if not models:
-        raise HTTPException(
-            status_code=404,
-            detail="No sub-models found for selection"
-        )
-    
-    # Calculate date range
-    today = date_type.today()
-    cutoff_date = today - timedelta(days=days)
-    
-    # Get backtest data for all models
-    backtest_data_dict = {}
-    
-    for model in models:
-        result = await db.execute(
-            select(BacktestData)
-            .where(BacktestData.model_id == model.id)
-            .where(BacktestData.date >= cutoff_date - timedelta(days=max(lookback_periods)))
-            .order_by(BacktestData.date)
-        )
-        records = result.scalars().all()
-        
-        if records:
-            # Store as list of (date, traded_value) tuples
-            backtest_data_dict[model.name] = [
-                (record.date, record.traded_value) for record in records
-            ]
-    
-    if not backtest_data_dict:
-        raise HTTPException(
-            status_code=404,
-            detail="No backtest data found for any sub-models"
-        )
-    
-    # Initialize model selection calculator
-    selector = ModelSelection(lookback_periods=lookback_periods)
-    
-    # Get all unique dates in the range
-    all_dates = set()
-    for data_points in backtest_data_dict.values():
-        all_dates.update(date for date, _ in data_points)
-    
-    # Filter to dates >= cutoff_date and sample at specified rate
-    valid_dates = sorted([d for d in all_dates if d >= cutoff_date])
-    
-    # Sample dates (e.g., every 21 days for monthly)
-    sampled_dates = valid_dates[::sample_rate]
-    
-    # Calculate selections for each sampled date
-    selections = []
-    
-    for target_date in sampled_dates:
-        best_model, confidence, all_ranks = selector.select_best_model(
-            backtest_data_dict,
-            target_date
-        )
-        
-        selections.append(ModelSelectionPoint(
-            date=target_date,
-            selected_model=best_model,
-            confidence=confidence,
-            all_ranks=all_ranks
-        ))
-    
-    return ModelSelectionResponse(
-        selections=selections,
-        lookback_periods=lookback_periods
-    )
 
