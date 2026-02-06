@@ -1,8 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.api.v1.api import api_router
 from app.core.config import settings
+from app.db.session import async_session
 import os
 
 app = FastAPI(
@@ -25,3 +26,28 @@ async def root():
     if os.path.exists(dashboard_path):
         return FileResponse(dashboard_path)
     return {"message": "Welcome to PyTAAA Web API"}
+
+
+@app.get("/health", status_code=status.HTTP_200_OK)
+async def health_check():
+    """Health check endpoint for monitoring and Docker health checks.
+    
+    Returns:
+        200 OK if database is accessible
+        503 Service Unavailable if database is unreachable
+    """
+    try:
+        async with async_session() as session:
+            # Simple database ping
+            from sqlalchemy import text
+            await session.execute(text("SELECT 1"))
+        return {
+            "status": "ok",
+            "database": "connected"
+        }
+    except Exception:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content={"status": "error", "database": "unreachable"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE
+        )

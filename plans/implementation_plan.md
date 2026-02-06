@@ -64,6 +64,8 @@ The biggest phase — split the god endpoint file and add a service layer.
 ### B2: Fix Route Ordering Bug ✅
 - [x] Ensure `/backtest/compare` is registered before `/{model_id}/backtest` in the router
 - [x] Comment added in `api.py` explaining the registration order
+- [x] **ADDITIONAL FIX:** Reordered router registration in `api.py` — `performance.router` now registered before `models.router` to prevent `/{model_id}` from intercepting `/compare`
+- [x] Moved `/compare` endpoint before `/{model_id}/performance` within `performance.py`
 
 ### B3: Extract Shared Database Factory for CLI ✅
 - [x] Create `app/db/cli_session.py` with a `create_cli_session()` factory function
@@ -91,54 +93,53 @@ The biggest phase — split the god endpoint file and add a service layer.
 
 Quick wins for query performance and correctness.
 
-### C1: Add Compound Indexes
-- [ ] Add compound index `(model_id, date)` to `PerformanceMetric` in `app/models/trading.py`
-- [ ] Add compound index `(model_id, date)` to `PortfolioSnapshot` in `app/models/trading.py`
-- [ ] Generate Alembic migration: `alembic revision --autogenerate -m "add_compound_indexes"`
-- [ ] Review and apply migration: `alembic upgrade head`
-- [ ] Verify query performance improvement with `EXPLAIN ANALYZE`
+### C1: Add Compound Indexes ✅
+- [x] Add compound index `(model_id, date)` to `PerformanceMetric` in `app/models/trading.py`
+- [x] Add compound index `(model_id, date)` to `PortfolioSnapshot` in `app/models/trading.py`
+- [x] Generate Alembic migration: `alembic revision --autogenerate -m "add_compound_indexes"`
+- [x] Review and apply migration: `alembic upgrade head`
+- [ ] Verify query performance improvement with `EXPLAIN ANALYZE` — **PENDING**
 
-### C2: Fix migrations/env.py
-- [ ] Add `BacktestData` to the import line in `migrations/env.py`
-- [ ] Verify autogenerate detects no pending changes: `alembic revision --autogenerate -m "test"` should produce empty migration
+### C2: Fix migrations/env.py ✅
+- [x] Add `BacktestData` to the import line in `migrations/env.py`
+- [ ] Verify autogenerate detects no pending changes: `alembic revision --autogenerate -m "test"` should produce empty migration — **PENDING**
 
-### C3: Make SQL Echo Configurable
-- [ ] Add `SQL_ECHO: bool = False` to `Settings` class in `app/core/config.py`
-- [ ] Update `app/db/session.py` to use `settings.SQL_ECHO` instead of hardcoded `True`
-- [ ] Add `SQL_ECHO=true` to `.env.example` with comment "Set to true for development SQL logging"
+### C3: Make SQL Echo Configurable ✅
+- [x] Add `SQL_ECHO: bool = False` to `Settings` class in `app/core/config.py`
+- [x] Update `app/db/session.py` to use `settings.SQL_ECHO` instead of hardcoded `True`
+- [x] `.env.example` already includes `SQL_ECHO` with comment
 
-### C4: Remove Unused Dependencies
-- [ ] Remove `pandas==2.2.1` from `requirements.txt`
-- [ ] Search codebase for any `import pandas` to confirm it's truly unused
-- [ ] Rebuild Docker image to verify no import errors
+### C4: Remove Unused Dependencies ✅
+- [x] Remove `pandas==2.2.1` from `requirements.txt`
+- [x] Verified no `import pandas` exists in the codebase
+- [x] Rebuild Docker image to verify no import errors — **COMPLETED**
 
 ---
 
 ## Phase D: Error Handling & Robustness
 
-### D1: Fix Bare Except in Holdings Parser
-- [ ] Replace bare `except:` on line 80 of `app/parsers/holdings_parser.py` with `except (ValueError, IndexError):`
-- [ ] Add a warning log or comment explaining what date formats are being caught
-- [ ] Run parser tests to confirm no regressions
+### D1: Fix Bare Except in Holdings Parser ✅
+- [x] Replaced bare `except:` on line 80 of `app/parsers/holdings_parser.py` with `except (ValueError, IndexError):`
+- [x] Added comment explaining what exceptions are being caught
 
-### D2: Add Health Check Endpoint
-- [ ] Add `GET /health` endpoint to `app/main.py`
-- [ ] Return `{"status": "ok", "database": "connected"}` after a simple DB ping
-- [ ] Return 503 if database is unreachable
-- [ ] Add health check to `docker-compose.yml` for the app service
+### D2: Add Health Check Endpoint ✅
+- [x] Added `GET /health` endpoint to `app/main.py`
+- [x] Returns `{"status": "ok", "database": "connected"}` after a simple DB ping
+- [x] Returns 503 if database is unreachable
+- [ ] Add health check to `docker-compose.yml` for the app service — **PENDING**
 
-### D3: Implement --all-models CLI Flag
-- [ ] Add `--all-models` argument to CLI parser in `app/cli/ingest.py`
-- [ ] Define model list with their data directories and index types as a constant
-- [ ] When `--all-models` is passed, iterate through all 6 models and ingest each
-- [ ] Support `--all-models --backtest` to ingest all backtest data
-- [ ] Update deployment docs to reference the working flag
+### D3: Implement --all-models CLI Flag ✅
+- [x] Added `--all-models` argument to CLI parser in `app/cli/ingest.py`
+- [x] Defined `ALL_MODELS` constant with all 6 models and their configurations
+- [x] When `--all-models` is passed, iterates through all models and ingests each
+- [x] Supports `--all-models --backtest` to ingest all backtest data
+- [ ] Update deployment docs to reference the working flag — **PENDING**
 
-### D4: Replace Print Statements with Logging
-- [ ] Add `import logging` and `logger = logging.getLogger(__name__)` to `app/cli/ingest.py`
-- [ ] Replace all `print()` calls with appropriate `logger.info()`, `logger.warning()`, `logger.error()`
-- [ ] Configure basic logging format in `main()` function
-- [ ] Keep emoji prefixes in log messages for readability
+### D4: Replace Print Statements with Logging ✅
+- [x] Added `import logging` and `logger = logging.getLogger(__name__)` to `app/cli/ingest.py`
+- [x] Replaced all `print()` calls with appropriate `logger.info()`, `logger.warning()`, `logger.error()`
+- [x] Configured basic logging format at module level
+- [x] Kept emoji prefixes in log messages for readability
 
 ---
 

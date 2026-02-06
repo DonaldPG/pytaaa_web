@@ -2,9 +2,11 @@
 
 Usage:
     python -m app.cli.ingest --data-dir /path/to/pyTAAA_data --model naz100_pine
+    python -m app.cli.ingest --data-dir /path/to/pyTAAA_data --all-models
 """
 import asyncio
 import argparse
+import logging
 from pathlib import Path
 from typing import Optional
 import sys
@@ -17,6 +19,14 @@ from app.parsers.status_parser import parse_status_file
 from app.parsers.holdings_parser import parse_holdings_file
 from app.parsers.ranks_parser import parse_ranks_file
 from app.parsers.backtest_parser import parse_backtest_file
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 
 async def ingest_model(
@@ -48,31 +58,31 @@ async def ingest_model(
     ranks_file = data_store / "PyTAAA_ranks.params"
     
     if not status_file.exists():
-        print(f"❌ Status file not found: {status_file}")
+        logger.error(f"❌ Status file not found: {status_file}")
         return False
     
-    print(f"📂 Ingesting model: {model_name}")
-    print(f"   Data directory: {data_dir}")
+    logger.info(f"📂 Ingesting model: {model_name}")
+    logger.info(f"   Data directory: {data_dir}")
     
     # Parse files
-    print("📊 Parsing status file...")
+    logger.info("📊 Parsing status file...")
     metrics_data = parse_status_file(status_file)
-    print(f"   Found {len(metrics_data)} performance metrics")
+    logger.info(f"   Found {len(metrics_data)} performance metrics")
     
     holdings_data = []
     active_sub_model = None
     if holdings_file.exists():
-        print("📊 Parsing holdings file...")
+        logger.info("📊 Parsing holdings file...")
         holdings_data, active_sub_model = parse_holdings_file(holdings_file)
-        print(f"   Found {len(holdings_data)} portfolio snapshots")
+        logger.info(f"   Found {len(holdings_data)} portfolio snapshots")
         if active_sub_model:
-            print(f"   Active sub-model detected: {active_sub_model}")
+            logger.info(f"   Active sub-model detected: {active_sub_model}")
     
     ranks_data = []
     if ranks_file.exists():
-        print("📊 Parsing ranks file...")
+        logger.info("📊 Parsing ranks file...")
         ranks_data = parse_ranks_file(ranks_file)
-        print(f"   Found {len(ranks_data)} stock rankings")
+        logger.info(f"   Found {len(ranks_data)} stock rankings")
     
     # Create database session
     async with async_session() as session:
@@ -83,14 +93,14 @@ async def ingest_model(
         model = result.scalar_one_or_none()
         
         if model:
-            print(f"⚠️  Model '{model_name}' already exists (ID: {model.id})")
+            logger.warning(f"⚠️  Model '{model_name}' already exists (ID: {model.id})")
             overwrite = input("   Overwrite existing data? [y/N]: ")
             if overwrite.lower() != 'y':
-                print("❌ Ingestion cancelled")
+                logger.info("❌ Ingestion cancelled")
                 return False
             
             # Delete existing data using direct queries (not lazy-loaded relationships)
-            print("🗑️  Deleting existing snapshots and metrics...")
+            logger.info("🗑️  Deleting existing snapshots and metrics...")
             
             # First get snapshot IDs
             from sqlalchemy import delete
@@ -117,7 +127,7 @@ async def ingest_model(
             
             await session.commit()
         else:
-            print(f"✨ Creating new model: {model_name}")
+            logger.info(f"✨ Creating new model: {model_name}")
             model = TradingModel(
                 name=model_name,
                 description=description or f"Trading model: {model_name}",
@@ -129,7 +139,7 @@ async def ingest_model(
             await session.refresh(model)
         
         # Insert performance metrics
-        print(f"💾 Inserting {len(metrics_data)} performance metrics...")
+        logger.info(f"💾 Inserting {len(metrics_data)} performance metrics...")
         for i, metric_dict in enumerate(metrics_data):
             metric = PerformanceMetric(
                 model_id=model.id,
@@ -141,14 +151,14 @@ async def ingest_model(
             session.add(metric)
             
             if (i + 1) % 1000 == 0:
-                print(f"   Progress: {i + 1}/{len(metrics_data)}")
+                logger.info(f"   Progress: {i + 1}/{len(metrics_data)}")
         
         await session.commit()
-        print(f"✅ Inserted {len(metrics_data)} metrics")
+        logger.info(f"✅ Inserted {len(metrics_data)} metrics")
         
         # Insert portfolio snapshots and holdings
         if holdings_data:
-            print(f"💾 Inserting {len(holdings_data)} portfolio snapshots...")
+            logger.info(f"💾 Inserting {len(holdings_data)} portfolio snapshots...")
             
             # Sort snapshots by date to process chronologically
             holdings_data_sorted = sorted(holdings_data, key=lambda x: x['date'])
@@ -156,13 +166,13 @@ async def ingest_model(
             # Build a cache of model name -> model ID for meta-models
             model_id_cache = {}
             if model.is_meta:
-                print("   Building sub-model ID cache for meta-model...")
+                logger.info("   Building sub-model ID cache for meta-model...")
                 # Get all potential sub-models
                 all_models_result = await session.execute(select(TradingModel))
                 all_models = all_models_result.scalars().all()
                 for m in all_models:
                     model_id_cache[m.name] = m.id
-                print(f"   Cached {len(model_id_cache)} model IDs")
+                logger.info(f"   Cached {len(model_id_cache)} model IDs")
             
             # Track previous holdings to determine actual purchase dates
             previous_holdings = {}  # {(ticker, purchase_price): buy_date}
@@ -174,7 +184,7 @@ async def ingest_model(
                     active_model_name = snapshot_dict['active_model']
                     snapshot_active_sub_model_id = model_id_cache.get(active_model_name)
                     if not snapshot_active_sub_model_id:
-                        print(f"   ⚠️  Warning: Active model '{active_model_name}' not found for snapshot {snapshot_dict['date']}")
+                        logger.warning(f"   ⚠️  Active model '{active_model_name}' not found for snapshot {snapshot_dict['date']}")
                 
                 snapshot = PortfolioSnapshot(
                     model_id=model.id,
@@ -222,12 +232,12 @@ async def ingest_model(
                 previous_holdings = current_holdings_set
                 
                 if (i + 1) % 50 == 0:
-                    print(f"   Progress: {i + 1}/{len(holdings_data_sorted)}")
+                    logger.info(f"   Progress: {i + 1}/{len(holdings_data_sorted)}")
             
             await session.commit()
-            print(f"✅ Inserted {len(holdings_data)} snapshots with corrected purchase dates")
+            logger.info(f"✅ Inserted {len(holdings_data)} snapshots with corrected purchase dates")
         
-        print(f"✅ Successfully ingested model: {model_name}")
+        logger.info(f"✅ Successfully ingested model: {model_name}")
         return True
 
 
@@ -252,16 +262,16 @@ async def ingest_backtest_data(
     backtest_file = data_store / "pyTAAAweb_backtestPortfolioValue.params"
     
     if not backtest_file.exists():
-        print(f"❌ Backtest file not found: {backtest_file}")
+        logger.error(f"❌ Backtest file not found: {backtest_file}")
         return False
     
-    print(f"📂 Ingesting backtest data for model: {model_name}")
-    print(f"   Data file: {backtest_file}")
+    logger.info(f"📂 Ingesting backtest data for model: {model_name}")
+    logger.info(f"   Data file: {backtest_file}")
     
     # Parse backtest file
-    print("📊 Parsing backtest file...")
+    logger.info("📊 Parsing backtest file...")
     backtest_data = parse_backtest_file(backtest_file)
-    print(f"   Found {len(backtest_data)} backtest data points")
+    logger.info(f"   Found {len(backtest_data)} backtest data points")
     
     # Create database session
     async with async_session() as session:
@@ -272,10 +282,10 @@ async def ingest_backtest_data(
         model = result.scalar_one_or_none()
         
         if not model:
-            print(f"❌ Model '{model_name}' not found. Please ingest model data first.")
+            logger.error(f"❌ Model '{model_name}' not found. Please ingest model data first.")
             return False
         
-        print(f"✅ Found model '{model_name}' (ID: {model.id})")
+        logger.info(f"✅ Found model '{model_name}' (ID: {model.id})")
         
         # Check if backtest data already exists
         existing_result = await session.execute(
@@ -284,11 +294,11 @@ async def ingest_backtest_data(
         if existing_result.scalar_one_or_none():
             overwrite = input("   Backtest data already exists. Overwrite? [y/N]: ")
             if overwrite.lower() != 'y':
-                print("❌ Ingestion cancelled")
+                logger.info("❌ Ingestion cancelled")
                 return False
             
             # Delete existing backtest data
-            print("🗑️  Deleting existing backtest data...")
+            logger.info("🗑️  Deleting existing backtest data...")
             from sqlalchemy import delete
             await session.execute(
                 delete(BacktestData).where(BacktestData.model_id == model.id)
@@ -296,7 +306,7 @@ async def ingest_backtest_data(
             await session.commit()
         
         # Insert backtest data
-        print(f"💾 Inserting {len(backtest_data)} backtest data points...")
+        logger.info(f"💾 Inserting {len(backtest_data)} backtest data points...")
         for i, data_dict in enumerate(backtest_data):
             backtest_record = BacktestData(
                 model_id=model.id,
@@ -310,11 +320,22 @@ async def ingest_backtest_data(
             session.add(backtest_record)
             
             if (i + 1) % 1000 == 0:
-                print(f"   Progress: {i + 1}/{len(backtest_data)}")
+                logger.info(f"   Progress: {i + 1}/{len(backtest_data)}")
         
         await session.commit()
-        print(f"✅ Successfully inserted {len(backtest_data)} backtest data points")
+        logger.info(f"✅ Successfully inserted {len(backtest_data)} backtest data points")
         return True
+
+
+# Define all models with their configurations
+ALL_MODELS = [
+    ("naz100_pine", "NASDAQ_100", "NASDAQ 100 Pine model"),
+    ("naz100_pi", "NASDAQ_100", "NASDAQ 100 Pi model"),
+    ("naz100_abacus", "NASDAQ_100", "NASDAQ 100 Abacus model"),
+    ("sp500_pine", "SP_500", "S&P 500 Pine model"),
+    ("sp500_pi", "SP_500", "S&P 500 Pi model"),
+    ("sp500_abacus", "SP_500", "S&P 500 Abacus model"),
+]
 
 
 def main():
@@ -326,13 +347,17 @@ def main():
         "--data-dir",
         type=Path,
         required=True,
-        help="Path to model data directory (e.g., /Users/donaldpg/pyTAAA_data/naz100_pine)",
+        help="Path to model data directory (e.g., /Users/donaldpg/pyTAAA_data)",
     )
     parser.add_argument(
         "--model",
         type=str,
-        required=True,
-        help="Model name (e.g., naz100_pine)",
+        help="Model name (e.g., naz100_pine) - required unless --all-models is used",
+    )
+    parser.add_argument(
+        "--all-models",
+        action="store_true",
+        help="Ingest all 6 models (naz100_pine, naz100_pi, naz100_abacus, sp500_pine, sp500_pi, sp500_abacus)",
     )
     parser.add_argument(
         "--backtest",
@@ -344,42 +369,90 @@ def main():
         type=str,
         choices=["NASDAQ_100", "SP_500"],
         default="NASDAQ_100",
-        help="Index type (default: NASDAQ_100) - ignored for backtest-only",
+        help="Index type (default: NASDAQ_100) - ignored for backtest-only and --all-models",
     )
     parser.add_argument(
         "--description",
         type=str,
-        help="Model description - ignored for backtest-only",
+        help="Model description - ignored for backtest-only and --all-models",
     )
     parser.add_argument(
         "--meta",
         action="store_true",
-        help="Mark as meta-model - ignored for backtest-only",
+        help="Mark as meta-model - ignored for backtest-only and --all-models",
     )
     
     args = parser.parse_args()
     
+    # Validate arguments
+    if not args.all_models and not args.model:
+        parser.error("Either --model or --all-models must be specified")
+    
     # Validate data directory
     if not args.data_dir.exists():
-        print(f"❌ Data directory not found: {args.data_dir}")
+        logger.error(f"❌ Data directory not found: {args.data_dir}")
         sys.exit(1)
     
-    # Run appropriate ingestion
-    if args.backtest:
-        success = asyncio.run(ingest_backtest_data(
-            data_dir=args.data_dir,
-            model_name=args.model,
-        ))
+    # Run ingestion for all models or single model
+    if args.all_models:
+        logger.info("🚀 Ingesting all models...")
+        all_success = True
+        for model_name, index_type, description in ALL_MODELS:
+            model_data_dir = args.data_dir / model_name
+            if not model_data_dir.exists():
+                logger.warning(f"⚠️  Skipping {model_name}: directory not found at {model_data_dir}")
+                continue
+            
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Processing: {model_name}")
+            logger.info(f"{'='*60}")
+            
+            if args.backtest:
+                success = asyncio.run(ingest_backtest_data(
+                    data_dir=model_data_dir,
+                    model_name=model_name,
+                ))
+            else:
+                success = asyncio.run(ingest_model(
+                    data_dir=model_data_dir,
+                    model_name=model_name,
+                    index_type=index_type,
+                    description=description,
+                    is_meta=False,
+                ))
+            
+            if not success:
+                all_success = False
+                logger.warning(f"⚠️  Failed to ingest {model_name}")
+        
+        logger.info(f"\n{'='*60}")
+        if all_success:
+            logger.info("✅ All models ingested successfully")
+        else:
+            logger.warning("⚠️  Some models failed to ingest")
+        sys.exit(0 if all_success else 1)
     else:
-        success = asyncio.run(ingest_model(
-            data_dir=args.data_dir,
-            model_name=args.model,
-            index_type=args.index,
-            description=args.description,
-            is_meta=args.meta,
-        ))
-    
-    sys.exit(0 if success else 1)
+        # Single model ingestion
+        model_data_dir = args.data_dir / args.model
+        if not model_data_dir.exists():
+            logger.error(f"❌ Model directory not found: {model_data_dir}")
+            sys.exit(1)
+        
+        if args.backtest:
+            success = asyncio.run(ingest_backtest_data(
+                data_dir=model_data_dir,
+                model_name=args.model,
+            ))
+        else:
+            success = asyncio.run(ingest_model(
+                data_dir=model_data_dir,
+                model_name=args.model,
+                index_type=args.index,
+                description=args.description,
+                is_meta=args.meta,
+            ))
+        
+        sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":

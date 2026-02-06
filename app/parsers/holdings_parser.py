@@ -77,7 +77,9 @@ def parse_holdings_file(file_path: Path) -> Tuple[List[Dict], Optional[str]]:
                             # Try format without leading zeros: 2013-1-2
                             parts = date_str.split('-')
                             current_date = datetime(int(parts[0]), int(parts[1]), int(parts[2])).date()
-                        except:
+                        except (ValueError, IndexError):
+                            # ValueError: invalid integer conversion or out-of-range date values
+                            # IndexError: date_str doesn't have 3 dash-separated parts
                             continue
                     
                     current_stocks = []
