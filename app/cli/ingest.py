@@ -433,7 +433,13 @@ def main():
         sys.exit(0 if all_success else 1)
     else:
         # Single model ingestion
-        model_data_dir = args.data_dir / args.model
+        # If --data-dir already points to the model directory, use it directly
+        # Otherwise, append the model name to the data directory
+        if args.data_dir.name == args.model:
+            model_data_dir = args.data_dir
+        else:
+            model_data_dir = args.data_dir / args.model
+        
         if not model_data_dir.exists():
             logger.error(f"❌ Model directory not found: {model_data_dir}")
             sys.exit(1)

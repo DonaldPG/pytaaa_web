@@ -2,6 +2,8 @@
 import asyncio
 from typing import AsyncGenerator, Generator
 
+from httpx import AsyncClient, ASGITransport
+
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -11,7 +13,7 @@ from app.db.session import get_db
 from app.main import app
 from app.models.base import Base
 # Import all models so Base.metadata knows about them
-from app.models.trading import TradingModel, PortfolioSnapshot, PortfolioHolding, PerformanceMetric
+from app.models.trading import TradingModel, PortfolioSnapshot, PortfolioHolding, PerformanceMetric, BacktestData
 
 # Test database URL (override production database)
 TEST_DATABASE_URL = "postgresql+asyncpg://pytaaa_user:pytaaa_pass@localhost:5432/pytaaa_test"
@@ -71,3 +73,11 @@ def override_get_db(db_session: AsyncSession):
     app.dependency_overrides[get_db] = _override_get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def async_client(override_get_db) -> AsyncGenerator[AsyncClient, None]:
+    """Create an async HTTP client for testing API endpoints."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client

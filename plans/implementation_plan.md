@@ -143,34 +143,36 @@ Quick wins for query performance and correctness.
 
 ---
 
-## Phase E: Test Coverage
+## Phase E: Test Coverage ✅
 
-### E1: Fix Test Configuration
-- [ ] Add `BacktestData` to imports in `tests/conftest.py`
-- [ ] Verify test database creates `backtest_data` table
+### E1: Fix Test Configuration ✅
+- [x] Added `BacktestData` to imports in `tests/conftest.py`
+- [x] Added `async_client` fixture for API endpoint testing
 
-### E2: Write Backtest Endpoint Tests
-- [ ] Test `GET /models/{id}/backtest` with empty database — expect 404
-- [ ] Test `GET /models/{id}/backtest` with populated data — verify response structure
-- [ ] Test `GET /models/{id}/backtest?days=30` — verify date filtering
-- [ ] Test `GET /models/{id}/backtest` with non-existent model — expect 404
-- [ ] Test `GET /models/backtest/compare` with valid model IDs
-- [ ] Test `GET /models/backtest/compare` with empty model list — expect 400
+### E2: Write Backtest Endpoint Tests ✅
+- [x] Created `tests/test_backtest_endpoints.py` with tests for:
+  - `GET /models/{id}/backtest` with empty database — expect 404
+  - `GET /models/{id}/backtest` with populated data — verify response structure
+  - `GET /models/{id}/backtest?days=30` — verify date filtering
+  - `GET /models/{id}/backtest` with non-existent model — expect 404
+  - `GET /models/backtest/compare` with valid model IDs
+  - `GET /models/backtest/compare` with empty model list — expect 400
 
-### E3: Write Backtest Parser Tests
-- [ ] Test parsing valid 5-column file — verify all fields
-- [ ] Test parsing valid 6-column file — verify `selected_model` field
-- [ ] Test parsing file with malformed lines — expect `BacktestParseError`
-- [ ] Test parsing empty file — expect `BacktestParseError`
-- [ ] Test parsing file with invalid values below -99999 — verify cleanup to 0
-- [ ] Test file not found — expect `BacktestParseError`
+### E3: Write Backtest Parser Tests ✅
+- [x] Created `tests/test_backtest_parser.py` with tests for:
+  - Parsing valid 5-column file — verify all fields
+  - Parsing valid 6-column file — verify `selected_model` field
+  - Parsing file with malformed lines — expect `BacktestParseError`
+  - Parsing empty file — expect `BacktestParseError`
+  - Parsing file with invalid values below -99999 — verify cleanup to 0
+  - File not found — expect `BacktestParseError`
 
-### E4: Write CLI Ingest Tests
-- [ ] Create mock .params files in a temp directory
-- [ ] Test `ingest_model()` creates model and inserts metrics
-- [ ] Test `ingest_backtest_data()` creates backtest records
-- [ ] Test idempotent re-ingestion (overwrite flow)
-- [ ] Test missing status file returns False
+### E4: Write CLI Ingest Tests ✅
+- [x] Created `tests/test_cli_ingest.py` with tests for:
+  - `ingest_model()` creates model and inserts metrics
+  - `ingest_backtest_data()` creates backtest records
+  - Idempotent re-ingestion (overwrite flow)
+  - Missing status file returns False
 
 ---
 

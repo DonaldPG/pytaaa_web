@@ -1,0 +1,77 @@
+# Production Docker Compose for PyTAAA Web
+# Optimized for Raspberry Pi 4 deployment
+#
+# Usage:
+#   docker-compose -f docker-compose.prod.yml up -d
+#
+# For updates:
+#   docker-compose -f docker-compose.prod.yml pull
+#   docker-compose -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-pytaaa_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-pytaaa_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-pytaaa_db}
+    # No port exposure in production - only accessible via internal network
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pytaaa_user} -d ${POSTGRES_DB:-pytaaa_db}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Resource limits for Raspberry Pi 4
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # No volume mounts in production - use built image only
+    # volumes:
+    #   - .:/app
+    #   - /home/pi/pyTAAA_data:/data
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://pytaaa_user:pytaaa_pass@db:5432/pytaaa_db}
+      - APP_ENV=production
+      - SQL_ECHO=false
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Resource limits for Raspberry Pi 4
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+volumes:
+  postgres_data:
+    driver: local
