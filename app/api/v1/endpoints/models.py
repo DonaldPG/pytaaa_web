@@ -106,7 +106,7 @@ async def compare_models(
     Useful for comparing meta-model performance against underlying models.
     
     Args:
-        days: Number of most recent days to include (default 90, max 5000)
+        days: Number of most recent days to include (default 90, max 100000)
         db: Database session
         
     Returns:
