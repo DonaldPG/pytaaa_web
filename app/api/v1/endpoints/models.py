@@ -40,40 +40,34 @@ async def get_model_or_404(model_id: UUID, db: AsyncSession) -> TradingModel:
 async def list_models(db: AsyncSession = Depends(get_db)):
     """List all available trading models with their latest performance values.
     
-    Optimized to avoid N+1 queries using a subquery for latest metrics.
+    Optimized to avoid N+1 queries and duplicates using a subquery for latest metrics.
     """
-    # Subquery to get latest metric date per model
+    # Subquery to get the latest metric (by date, then by id for determinism) per model
     latest_metric_subquery = (
-        select(
-            PerformanceMetric.model_id,
-            func.max(PerformanceMetric.date).label('max_date')
-        )
-        .group_by(PerformanceMetric.model_id)
+        select(PerformanceMetric)
+        .distinct(PerformanceMetric.model_id)
+        .order_by(PerformanceMetric.model_id, PerformanceMetric.date.desc(), PerformanceMetric.id.desc())
         .subquery()
     )
     
-    # Join models with their latest metrics in a single query
+    # Get all models and join with their latest metrics (at most one per model)
     result = await db.execute(
-        select(TradingModel, PerformanceMetric)
+        select(TradingModel, latest_metric_subquery.c.traded_value, latest_metric_subquery.c.date)
         .outerjoin(
             latest_metric_subquery,
             TradingModel.id == latest_metric_subquery.c.model_id
         )
-        .outerjoin(
-            PerformanceMetric,
-            (PerformanceMetric.model_id == TradingModel.id) &
-            (PerformanceMetric.date == latest_metric_subquery.c.max_date)
-        )
+        .order_by(TradingModel.is_meta.desc(), TradingModel.name)
     )
     
     # Collect all results
     all_results = []
-    for model, metric in result:
-        all_results.append((model, metric))
+    for model, traded_value, metric_date in result:
+        all_results.append((model, traded_value, metric_date))
     
     # Custom sort: meta-model first, then swap naz100_pi and naz100_pine for vertical alignment
     def sort_key(item):
-        model, _ = item
+        model, _, _ = item
         if model.is_meta:
             return (0, model.name)
         # Swap naz100_pi and naz100_pine so _pine cards align vertically
@@ -87,15 +81,15 @@ async def list_models(db: AsyncSession = Depends(get_db)):
     all_results.sort(key=sort_key)
     
     response = []
-    for model, metric in all_results:
+    for model, traded_value, metric_date in all_results:
         response.append(ModelWithLatestValue(
             id=model.id,
             name=model.name,
             description=model.description,
             index_type=model.index_type,
             is_meta=model.is_meta,
-            latest_value=metric.traded_value if metric else None,
-            latest_date=metric.date if metric else None
+            latest_value=traded_value,
+            latest_date=metric_date
         ))
     
     return response
