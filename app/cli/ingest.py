@@ -9,10 +9,9 @@ from pathlib import Path
 from typing import Optional
 import sys
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy import select
 
-from app.core.config import Settings
+from app.db.cli_session import create_cli_session
 from app.models.trading import TradingModel, PortfolioSnapshot, PortfolioHolding, PerformanceMetric, BacktestData
 from app.parsers.status_parser import parse_status_file
 from app.parsers.holdings_parser import parse_holdings_file
@@ -36,11 +35,8 @@ async def ingest_model(
         description: Optional description
         is_meta: Whether this is a meta-model
     """
-    # Use localhost for CLI (not Docker internal 'db')
-    settings = Settings(POSTGRES_SERVER="localhost")
-    database_url = settings.get_database_url()
-    engine = create_async_engine(database_url)
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
+    # Create database session for CLI
+    async_session, database_url = create_cli_session()
     
     # Locate .params files (in data_store subdirectory)
     data_store = data_dir / "data_store"
@@ -245,11 +241,8 @@ async def ingest_backtest_data(
         data_dir: Path to data directory (e.g., /Users/donaldpg/pyTAAA_data/naz100_pine)
         model_name: Name of the model to associate backtest data with
     """
-    # Use localhost for CLI (not Docker internal 'db')
-    settings = Settings(POSTGRES_SERVER="localhost")
-    database_url = settings.get_database_url()
-    engine = create_async_engine(database_url)
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
+    # Create database session for CLI
+    async_session, database_url = create_cli_session()
     
     # Locate backtest file (in data_store subdirectory)
     data_store = data_dir / "data_store"

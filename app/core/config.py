@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "pytaaa_pass"
     POSTGRES_DB: str = "pytaaa_db"
     SQLALCHEMY_DATABASE_URI: Optional[str] = None
+    
+    # Enable SQL query logging (set to "true" for development)
+    SQL_ECHO: bool = False
 
     class Config:
         case_sensitive = True

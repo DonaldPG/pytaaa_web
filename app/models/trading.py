@@ -1,7 +1,7 @@
 import uuid
 from datetime import date as DateType
 from enum import Enum as PyEnum
-from sqlalchemy import String, Text, Boolean, Float, Integer, Date, ForeignKey, Enum, UUID
+from sqlalchemy import String, Text, Boolean, Float, Integer, Date, ForeignKey, Enum, UUID, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional, List
 from app.models.base import Base
@@ -29,7 +29,7 @@ class PortfolioSnapshot(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_models.id"))
-    date: Mapped[DateType] = mapped_column(Date, index=True)
+    date: Mapped[DateType] = mapped_column(Date)
     total_value: Mapped[float] = mapped_column(Float, default=0.0)
     
     # For meta-model, track which sub-model was active at this snapshot
@@ -37,6 +37,11 @@ class PortfolioSnapshot(Base):
 
     model: Mapped["TradingModel"] = relationship("TradingModel", foreign_keys=[model_id], back_populates="snapshots")
     holdings: Mapped[List["PortfolioHolding"]] = relationship(back_populates="snapshot", cascade="all, delete-orphan")
+    
+    # Compound index for efficient model + date queries
+    __table_args__ = (
+        Index('ix_portfolio_snapshots_model_id_date', 'model_id', 'date'),
+    )
 
 class PortfolioHolding(Base):
     __tablename__ = "portfolio_holdings"
@@ -59,7 +64,7 @@ class PerformanceMetric(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_models.id"))
-    date: Mapped[DateType] = mapped_column(Date, index=True)
+    date: Mapped[DateType] = mapped_column(Date)
     
     # Values from PyTAAA_status.params
     base_value: Mapped[float] = mapped_column(Float)  # cumu_value (long only/original)
@@ -69,6 +74,11 @@ class PerformanceMetric(Base):
     daily_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     model: Mapped["TradingModel"] = relationship(back_populates="metrics")
+    
+    # Compound index for efficient model + date queries
+    __table_args__ = (
+        Index('ix_performance_metrics_model_id_date', 'model_id', 'date'),
+    )
 
 class BacktestData(Base):
     """Backtest portfolio value data from pyTAAAweb_backtestPortfolioValue.params files."""
